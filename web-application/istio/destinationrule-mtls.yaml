@@ -1,0 +1,10 @@
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: web-app-mtls
+  namespace: web-app
+spec:
+  host: web-app
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
