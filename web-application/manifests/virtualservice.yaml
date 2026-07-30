@@ -11,9 +11,17 @@ spec:
   http:
   - match:
     - uri:
+        prefix: /api
+    route:
+    - destination:
+        host: backend.web-app.svc.cluster.local
+        port:
+          number: 5000
+  - match:
+    - uri:
         prefix: /
     route:
     - destination:
-        host: web-app.web-app.svc.cluster.local
+        host: frontend.web-app.svc.cluster.local
         port:
           number: 80
