@@ -1,0 +1,10 @@
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: web-app
+  namespace: web-app
+spec:
+  host: web-app
+  trafficPolicy:
+    tls:
+      mode: DISABLE
