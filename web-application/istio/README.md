@@ -7,9 +7,61 @@ Files included:
 - `destinationrule-mtls.yaml` — DestinationRule to configure ISTIO_MUTUAL TLS for the `web-app` service.
 - `virtualservice-retries.yaml` — VirtualService for the web-app with retry and timeout policy.
 
-Use these files when you want to enable Istio security (mTLS) and basic traffic policies for `web-app`.
 
-Quick apply (order matters when enabling mTLS):
+## Install Istio and components
+
+These steps install Istio locally and (optionally) the example addons (Prometheus, Grafana, Kiali, Jaeger). Run them from a machine with `kubectl` configured for your cluster.
+
+1. Download Istio and add `istioctl` to your PATH:
+
+```bash
+curl -L https://istio.io/downloadIstio | sh -
+cd istio-*
+export PATH=$PWD/bin:$PATH
+```
+
+2. Install Istio (demo profile) using `istioctl`:
+
+```bash
+istioctl install --set profile=demo -y
+```
+
+3. (Optional) Install the example addons (Prometheus, Grafana, Kiali, Jaeger):
+
+```bash
+# from inside the extracted istio directory
+kubectl apply -f samples/addons
+```
+
+4. Verify the control plane and addons:
+
+```bash
+kubectl get pods -n istio-system
+kubectl get svc -n istio-system
+```
+
+5. If you want automatic sidecar injection for the `web-app` namespace (recommended for this lab):
+
+```bash
+kubectl label namespace web-app istio-injection=enabled --overwrite
+```
+
+6. To inspect the ingress gateway service (to get NodePort/LoadBalancer info):
+
+```bash
+kubectl -n istio-system get svc istio-ingressgateway
+# NodePort (if present):
+kubectl -n istio-system get svc istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}'
+# External IP (if LoadBalancer is provisioned):
+kubectl -n istio-system get svc istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+```
+
+Notes:
+- On bare-metal clusters the `istio-ingressgateway` service may remain of type `LoadBalancer` with a pending EXTERNAL-IP. In this lab we use an external NGINX (or host) to proxy to a node IP + NodePort (see the repo's `nginx-proxy` guide).
+- For production use, choose an appropriate installation profile and follow Istio's best practices for control plane HA, telemetry, and security.
+
+
+## Quick apply (order matters when enabling mTLS)
 
 1. Make sure the namespace and application are created and running:
 
