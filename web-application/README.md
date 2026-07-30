@@ -39,7 +39,7 @@ kubectl apply -f web-application/manifests/frontend-deployment.yaml
 4) Initialize DB (run one-time job/pod):
 
 ```bash
-kubectl -n web-app run db-init --rm -it --image=yourrepo/web-app-backend:latest --restart=Never --env="DB_HOST=postgres" --env="DB_USER=webapp" --env="DB_PASSWORD=webapppass" --env="DB_NAME=webappdb" -- python init_db.py
+kubectl -n web-app run db-init --rm -dit --image=yourrepo/web-app-backend:latest --restart=Never --env="DB_HOST=postgres" --env="DB_USER=webapp" --env="DB_PASSWORD=webapppass" --env="DB_NAME=webappdb" -- python init_db.py
 ```
 
 5) Apply Istio routing (gateway already present):
