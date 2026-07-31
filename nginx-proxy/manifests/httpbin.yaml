@@ -13,9 +13,12 @@ spec:
       labels:
         app: httpbin
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: httpbin
-        image: kennethreitz/httpbin
+        image: ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
 ---
