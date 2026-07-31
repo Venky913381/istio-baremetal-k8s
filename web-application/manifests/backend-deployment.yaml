@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: backend
-        image: IMAGE_BACKEND
+        image: venky913381/backend-istio:latest
         ports:
         - containerPort: 5000
         env:
