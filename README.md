@@ -11,17 +11,7 @@ This guide demonstrates how to use GitHub Container Registry for storing and dep
 - `kubectl` and `istioctl` installed
 - Bare-metal Kubernetes cluster running
 
-### Step 1: Enable Public Access to Package
-
-1. Go to GitHub → Your Repository → Packages
-2. Find your `httpbin` package
-3. Click on the package → Click "Package settings" (gear icon)
-4. Change visibility from "Private" to "Public"
-5. Click "Change visibility"
-
-> **Note**: Public packages don't require authentication to pull
-
-### Step 2: Authenticate Docker with GHCR (Required for Pushing)
+### Step 1: Set Up GitHub Personal Access Token
 
 Create a GitHub Personal Access Token:
 1. Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
@@ -34,41 +24,102 @@ Create a GitHub Personal Access Token:
 5. Click "Generate token"
 6. Copy the token (you won't see it again!)
 
-**Login to GHCR:**
+**Export the token as environment variable:**
 
 ```bash
 export GITHUB_PAT="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-echo $GITHUB_PAT | docker login ghcr.io -u venky913381 --password-stdin
+```
+
+Verify it's set:
+```bash
+echo $GITHUB_PAT
+```
+
+### Step 2: Create Dockerfile (If You Don't Have One)
+
+Create `nginx-proxy/Dockerfile`:
+
+```dockerfile
+FROM kennethreitz/httpbin:latest
+EXPOSE 80
+```
+
+Or if building a custom application:
+
+```dockerfile
+FROM python:3.9-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+EXPOSE 80
+CMD ["python", "app.py"]
+```
+
+### Step 3: Build Docker Image Locally
+
+Build the image with GHCR registry name:
+
+```bash
+docker build -t ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest nginx-proxy/
+```
+
+Verify image was built:
+```bash
+docker images | grep httpbin
 ```
 
 Expected output:
 ```
-Login Succeeded
+ghcr.io/venky913381/istio-baremetal-k8s/httpbin   latest    abc123def456   2 minutes ago   150MB
 ```
 
-> **Common Error Fix**: If you get `denied: requested access to the resource is denied`, it means:
-> - Your token is invalid or expired
-> - Your token doesn't have `write:packages` scope
-> - You're not logged in to the correct registry (should be `ghcr.io`, not `docker.io`)
+### Step 4: Authenticate Docker with GHCR (Non-TTY Fix)
 
-### Step 3: Build Docker Image Locally
+**For non-TTY environments** (like remote servers, CI/CD, or containers):
 
-Clone your repository:
+Option A - Using stdin redirection with docker config:
 ```bash
-git clone https://github.com/venky913381/istio-baremetal-k8s.git
-cd istio-baremetal-k8s
+cat > ~/.docker/config.json << EOF
+{
+  "auths": {
+    "ghcr.io": {
+      "auth": "$(echo -n "venky913381:$GITHUB_PAT" | base64)"
+    }
+  }
+}
+EOF
 ```
 
-Build the Docker image:
+Option B - Using docker login with --password flag:
 ```bash
-docker build -t ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest -f nginx-proxy/Dockerfile nginx-proxy/
+docker login ghcr.io -u venky913381 -p "$GITHUB_PAT"
 ```
 
-> **Note**: If you don't have a Dockerfile yet, you can use the public httpbin image directly
+Option C - Direct credential file creation:
+```bash
+mkdir -p ~/.docker
+echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$(echo -n venky913381:$GITHUB_PAT | base64)\"}}}" > ~/.docker/config.json
+chmod 600 ~/.docker/config.json
+```
 
-### Step 4: Push Docker Image to GHCR
+**Verify authentication:**
+```bash
+docker pull ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest
+```
 
-Push your image to GitHub Container Registry:
+If successful, you'll see:
+```
+latest: Pulling from venky913381/istio-baremetal-k8s/httpbin
+...
+Digest: sha256:abc123...
+Status: Downloaded newer image
+```
+
+### Step 5: Push Docker Image to GHCR
+
+Push your locally built image:
+
 ```bash
 docker push ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest
 ```
@@ -82,17 +133,24 @@ f9577bb2abcb: Pushed
 latest: digest: sha256:abc123... size: 1234
 ```
 
-> **Troubleshooting Push Errors**:
-> - `denied: requested access to the resource is denied` → Re-login: `docker logout ghcr.io && docker login ghcr.io`
-> - `authentication required` → Verify token has `write:packages` scope
-> - `name unknown` → Use lowercase username: `ghcr.io/venky913381/...`
+**Troubleshooting Push Errors:**
 
-Verify the image was pushed:
 ```bash
-docker pull ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest
+# Error: denied: requested access to the resource is denied
+# Solution: Re-authenticate
+docker login ghcr.io -u venky913381 -p "$GITHUB_PAT"
+docker push ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest
+
+# Error: image does not exist locally with the tag
+# Solution: Build the image first
+docker build -t ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest nginx-proxy/
+
+# Error: cannot perform an interactive login from a non TTY device
+# Solution: Use Option B or C above (non-TTY authentication)
+docker login ghcr.io -u venky913381 -p "$GITHUB_PAT"
 ```
 
-### Step 5: Make Package Public (Optional for Public Images)
+### Step 6: Make Package Public (Optional)
 
 To allow anyone to pull without authentication:
 1. Go to GitHub → Packages → Select `httpbin`
@@ -106,14 +164,14 @@ Now anyone can pull:
 docker pull ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest
 ```
 
-### Step 6: Deploy to Kubernetes Cluster
+### Step 7: Deploy to Kubernetes Cluster
 
-Navigate to the manifest directory:
+Navigate to manifest directory:
 ```bash
 cd nginx-proxy/manifests
 ```
 
-Create the namespace and label it for Istio injection:
+Create the namespace:
 ```bash
 kubectl apply -f namespace.yaml
 ```
@@ -148,7 +206,7 @@ kubectl apply -f httpbin.yaml
 kubectl apply -f gateway.yaml
 ```
 
-### Step 7: Verify Deployment
+### Step 8: Verify Deployment
 
 Check if pods are running:
 ```bash
@@ -171,7 +229,7 @@ Check Istio ingress gateway:
 kubectl get svc -n istio-system | grep ingress-gateway
 ```
 
-### Step 8: Test the Application
+### Step 9: Test the Application
 
 Get the ingress gateway NodePort:
 ```bash
@@ -207,11 +265,11 @@ curl -v http://192.168.1.100:31234/get
 # 1. Set GitHub PAT
 export GITHUB_PAT="your_token_here"
 
-# 2. Login to GHCR
-echo $GITHUB_PAT | docker login ghcr.io -u venky913381 --password-stdin
+# 2. Build image locally
+docker build -t ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest nginx-proxy/
 
-# 3. Build image
-docker build -t ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest -f nginx-proxy/Dockerfile nginx-proxy/
+# 3. Authenticate (non-TTY safe)
+docker login ghcr.io -u venky913381 -p "$GITHUB_PAT"
 
 # 4. Push to GHCR
 docker push ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest
@@ -227,15 +285,34 @@ kubectl get pods -n demo
 
 ### Troubleshooting
 
-**Push Error: denied: requested access to the resource is denied**
+**Error: cannot perform an interactive login from a non TTY device**
+```bash
+# Use flag-based authentication instead of stdin
+docker login ghcr.io -u venky913381 -p "$GITHUB_PAT"
+```
+
+**Error: denied: requested access to the resource is denied**
 ```bash
 # Re-authenticate
-docker logout ghcr.io
-echo $GITHUB_PAT | docker login ghcr.io -u venky913381 --password-stdin
+docker login ghcr.io -u venky913381 -p "$GITHUB_PAT"
 
-# Verify token
+# Verify token is set
 echo $GITHUB_PAT
-# Should output: ghp_xxxxxx...
+
+# Try push again
+docker push ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest
+```
+
+**Error: image does not exist locally with the tag**
+```bash
+# Build the image first
+docker build -t ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest nginx-proxy/
+
+# Verify image exists
+docker images | grep httpbin
+
+# Then push
+docker push ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest
 ```
 
 **ImagePullBackOff in Kubernetes**
@@ -251,13 +328,14 @@ kubectl get secrets -n demo
 ```
 
 **401 Unauthorized when pushing**
-- Your PAT token is invalid, expired, or lacks `write:packages` scope
-- Generate a new token with correct scopes
+- Verify token exists: `echo $GITHUB_PAT`
+- Verify token has `write:packages` scope
+- Re-authenticate: `docker login ghcr.io -u venky913381 -p "$GITHUB_PAT"`
 
 **Cannot find image (pull error)**
 - Verify image was pushed: `docker images | grep httpbin`
-- Check package visibility is Public (if not creating secret)
-- Verify correct image URL in deployment manifest
+- Check package visibility is Public (if not using secret)
+- Verify image URL in deployment: `ghcr.io/venky913381/istio-baremetal-k8s/httpbin:latest`
 
 **Pod still in ImagePullBackOff**
 ```bash
@@ -287,10 +365,9 @@ kubectl port-forward -n demo svc/httpbin 8080:80
 curl http://localhost:8080/get
 ```
 
-View all images in GHCR:
+View Docker login config:
 ```bash
-curl -H "Authorization: token $GITHUB_PAT" \
-  https://api.github.com/user/packages?package_type=container
+cat ~/.docker/config.json
 ```
 
 ### Next Labs
