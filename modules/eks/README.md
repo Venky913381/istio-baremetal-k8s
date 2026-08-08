@@ -17,20 +17,3 @@ module "eks" {
   node_role_arn      = module.iam.eks_node_role_arn
 }
 ```
-
-## Variables
-
-- `project_name`: Project name for tagging
-- `environment`: Environment (dev, stage, prod)
-- `cluster_version`: Kubernetes version
-- `vpc_id`: VPC ID
-- `subnet_ids`: Subnet IDs for the cluster
-- `cluster_role_arn`: IAM role ARN for EKS cluster
-- `node_role_arn`: IAM role ARN for nodes
-
-## Outputs
-
-- `cluster_id`: EKS cluster ID
-- `cluster_arn`: EKS cluster ARN
-- `cluster_endpoint`: EKS cluster endpoint
-- `cluster_security_group_id`: Security group ID of the cluster

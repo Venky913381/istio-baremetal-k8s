@@ -17,15 +17,3 @@ module "alb" {
 ```
 
 ## Variables
-
-- `project_name`: Project name for tagging
-- `environment`: Environment (dev, stage, prod)
-- `vpc_id`: VPC ID
-- `subnet_ids`: Subnet IDs for the ALB
-- `security_group_id`: Security group ID for the ALB
-
-## Outputs
-
-- `alb_arn`: ARN of the Application Load Balancer
-- `alb_dns_name`: DNS name of the ALB
-- `target_group_arn`: ARN of the target group

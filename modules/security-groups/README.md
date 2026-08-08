@@ -16,12 +16,6 @@ module "security_groups" {
 
 ## Variables
 
-- `project_name`: Project name for tagging
-- `environment`: Environment (dev, stage, prod)
-- `vpc_id`: VPC ID
-
-## Outputs
-
-- `alb_security_group_id`: Security group ID for ALB
-- `eks_security_group_id`: Security group ID for EKS
-- `database_security_group_id`: Security group ID for databases
+- `project_name`: The name of the project for tagging and naming resources.
+- `environment`: The deployment environment (e.g., dev, stage, prod).
+- `vpc_id`: The ID of the VPC where the security groups will be created.

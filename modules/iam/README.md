@@ -15,10 +15,5 @@ module "iam" {
 
 ## Variables
 
-- `project_name`: Project name for tagging
-- `environment`: Environment (dev, stage, prod)
-
-## Outputs
-
-- `eks_cluster_role_arn`: ARN of the EKS cluster IAM role
-- `eks_node_role_arn`: ARN of the EKS node IAM role
+- `project_name`: The name of the project for tagging and naming resources.
+- `environment`: The deployment environment (e.g., dev, stage, prod).

@@ -16,11 +16,6 @@ module "route53" {
 
 ## Variables
 
-- `project_name`: Project name for tagging
-- `environment`: Environment (dev, stage, prod)
-- `domain_name`: Domain name for the hosted zone
-
-## Outputs
-
-- `hosted_zone_id`: ID of the hosted zone
-- `name_servers`: Name servers for the hosted zone
+- `project_name`: The name of the project for tagging and naming resources.
+- `environment`: The deployment environment (e.g., dev, stage, prod).
+- `domain_name`: The domain name for which to create the Route53 hosted zone.
