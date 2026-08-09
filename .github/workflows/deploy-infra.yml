@@ -1,0 +1,210 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches:
+      - infra
+    paths:
+      - 'infra/**'
+      - '.github/workflows/deploy-infra.yml'
+  pull_request:
+    branches:
+      - infra
+    paths:
+      - 'infra/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  TERRAFORM_VERSION: 1.6.0
+
+jobs:
+  validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: infra
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Format Check
+        working-directory: ./infra
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: ./infra
+        run: terraform validate
+
+      - name: TFLint
+        uses: terraform-linters/setup-tflint@v3
+      
+      - name: Run TFLint
+        working-directory: ./infra
+        run: |
+          tflint --init
+          tflint --format compact
+
+  plan:
+    name: Plan Terraform
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        environment: [dev, stage, prod]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: infra
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: ./infra
+        run: terraform init
+
+      - name: Select Workspace
+        working-directory: ./infra
+        run: terraform workspace select ${{ matrix.environment }} || terraform workspace new ${{ matrix.environment }}
+
+      - name: Terraform Plan
+        working-directory: ./infra
+        run: |
+          terraform plan \
+            -var-file="environments/${{ matrix.environment }}/terraform.tfvars" \
+            -out=tfplan-${{ matrix.environment }}
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: tfplan-${{ matrix.environment }}
+          path: ./infra/tfplan-${{ matrix.environment }}
+          retention-days: 5
+
+  apply:
+    name: Apply Terraform
+    needs: plan
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/infra' && github.event_name == 'push'
+    strategy:
+      matrix:
+        environment: [dev]
+      max-parallel: 1
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: infra
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: ./infra
+        run: terraform init
+
+      - name: Select Workspace
+        working-directory: ./infra
+        run: terraform workspace select ${{ matrix.environment }} || terraform workspace new ${{ matrix.environment }}
+
+      - name: Terraform Apply
+        working-directory: ./infra
+        run: |
+          terraform apply \
+            -var-file="environments/${{ matrix.environment }}/terraform.tfvars" \
+            -auto-approve
+
+      - name: Capture Outputs
+        id: tf_outputs
+        working-directory: ./infra
+        run: |
+          echo "eks_cluster_endpoint=$(terraform output -raw eks_cluster_endpoint 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
+          echo "vpc_id=$(terraform output -raw vpc_id 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
+
+      - name: Comment PR with Outputs
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Terraform Plan Results\n\n**Environment**: dev\n\n- EKS Cluster Endpoint: \`${{ steps.tf_outputs.outputs.eks_cluster_endpoint }}\`\n- VPC ID: \`${{ steps.tf_outputs.outputs.vpc_id }}\``
+            })
+
+  destroy:
+    name: Destroy Infrastructure
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}-destroy
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: infra
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: ./infra
+        run: terraform init
+
+      - name: Select Workspace
+        working-directory: ./infra
+        run: terraform workspace select ${{ github.event.inputs.environment || 'dev' }}
+
+      - name: Terraform Destroy
+        working-directory: ./infra
+        run: |
+          terraform destroy \
+            -var-file="environments/${{ github.event.inputs.environment || 'dev' }}/terraform.tfvars" \
+            -auto-approve
+        env:
+          TF_IN_AUTOMATION: true
