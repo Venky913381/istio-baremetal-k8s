@@ -1,16 +1,5 @@
 name: Deploy Infrastructure
 on:
-  # push:
-  #   branches:
-  #     - infra
-  #   paths:
-  #     - 'infra/**'
-  #     - '.github/workflows/deploy-infra.yml'
-  # pull_request:
-  #   branches:
-  #     - infra
-  #   paths:
-  #     - 'infra/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -50,7 +39,7 @@ jobs:
   validate:
     name: Validate Terraform
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_validate == 'true')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_validate == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -83,7 +72,7 @@ jobs:
     name: Plan Terraform
     needs: validate
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_plan == 'true')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_plan == 'true'
     strategy:
       matrix:
         environment: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.environment)) || fromJson('["dev","stage","prod"]') }}
@@ -131,7 +120,7 @@ jobs:
     name: Apply Terraform
     needs: plan
     runs-on: ubuntu-latest
-    if: (github.ref == 'refs/heads/infra' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_apply == 'true')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_apply == 'true'
     strategy:
       matrix:
         environment: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.environment)) || fromJson('["dev"]') }}
@@ -185,7 +174,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `### Terraform Plan Results\n\n**Environment**: ${{ matrix.environment }}\n\n- EKS Cluster Endpoint: \`${{ steps.tf_outputs.outputs.eks_cluster_endpoint }}\`\n- VPC ID: \`${{ steps.tf_outputs.outputs.vpc_id }}\``
+              body: `### Terraform Plan Results\n\n**Environment**: ${{ matrix.environment }}\n\n- EKS Cluster Endpoint: \`${{ steps.tf_outputs.outputs.eks_cluster_endpoint }}\`\n- VPC ID: \`${{ steps.tf_outputs.outputs.vpc_id }}\`\n`
             })
 
   destroy:
