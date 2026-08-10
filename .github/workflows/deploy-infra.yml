@@ -1,17 +1,16 @@
 name: Deploy Infrastructure
-
 on:
-  push:
-    branches:
-      - infra
-    paths:
-      - 'infra/**'
-      - '.github/workflows/deploy-infra.yml'
-  pull_request:
-    branches:
-      - infra
-    paths:
-      - 'infra/**'
+  # push:
+  #   branches:
+  #     - infra
+  #   paths:
+  #     - 'infra/**'
+  #     - '.github/workflows/deploy-infra.yml'
+  # pull_request:
+  #   branches:
+  #     - infra
+  #   paths:
+  #     - 'infra/**'
   workflow_dispatch:
     inputs:
       environment:
