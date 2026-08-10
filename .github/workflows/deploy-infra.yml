@@ -49,6 +49,7 @@ jobs:
     name: Validate Infrastructure
     runs-on: ubuntu-latest
     if: github.event.inputs.action == 'validate'
+    environment: ${{ github.event.inputs.environment }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -89,6 +90,7 @@ jobs:
     name: Plan Infrastructure
     runs-on: ubuntu-latest
     if: github.event.inputs.action == 'plan'
+    environment: ${{ github.event.inputs.environment }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -103,7 +105,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION || vars.AWS_REGION || env.AWS_REGION }}
 
       - name: Run Terraform Plan
         run: |
@@ -135,6 +137,7 @@ jobs:
     name: Apply Infrastructure
     runs-on: ubuntu-latest
     if: github.event.inputs.action == 'apply'
+    environment: ${{ github.event.inputs.environment }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -149,7 +152,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION || vars.AWS_REGION || env.AWS_REGION }}
 
       - name: Run Terraform Apply
         run: |
@@ -181,6 +184,7 @@ jobs:
     name: Destroy Infrastructure
     runs-on: ubuntu-latest
     if: github.event.inputs.action == 'destroy'
+    environment: ${{ github.event.inputs.environment }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -195,7 +199,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION || vars.AWS_REGION || env.AWS_REGION }}
 
       - name: Run Terraform Destroy
         run: |
