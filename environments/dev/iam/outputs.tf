@@ -1,25 +1,24 @@
 output "eks_cluster_role_arn" {
   description = "ARN of the EKS cluster IAM role"
-  value       = aws_iam_role.eks_cluster_role.arn
+  value       = module.iam.eks_cluster_role_arn
 }
 
 output "eks_node_role_arn" {
   description = "ARN of the EKS node IAM role"
-  value       = aws_iam_role.eks_node_role.arn
+  value       = module.iam.eks_node_role_arn
 }
 
 output "eks_cluster_role_name" {
   description = "Name of the EKS cluster IAM role"
-  value       = aws_iam_role.eks_cluster_role.name
+  value       = module.iam.eks_cluster_role_name
 }
 
 output "eks_node_role_name" {
   description = "Name of the EKS node IAM role"
-  value       = aws_iam_role.eks_node_role.name
+  value       = module.iam.eks_node_role_name
 }
 
 output "ecs_task_execution_role_arn" {
   description = "ARN of the ECS task execution IAM role"
-  value       = aws_iam_role.ecs_task_execution_role.arn
+  value       = module.iam.ecs_task_execution_role_arn
 }
-

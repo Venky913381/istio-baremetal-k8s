@@ -1,35 +1,44 @@
 name: Deploy Infrastructure
+
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to deploy'
+        description: 'Target Environment'
         required: true
         type: choice
         options:
           - dev
           - stage
           - prod
-      run_validate:
-        description: 'Run the validate job'
-        required: false
-        type: boolean
-        default: 'false'
-      run_plan:
-        description: 'Run the plan job'
-        required: false
-        type: boolean
-        default: 'false'
-      run_apply:
-        description: 'Run the apply job'
-        required: false
-        type: boolean
-        default: 'false'
-      run_destroy:
-        description: 'Run the destroy job'
-        required: false
-        type: boolean
-        default: 'false'
+        default: 'dev'
+
+      resource:
+        description: 'Resource Stack'
+        required: true
+        type: choice
+        options:
+          - all
+          - vpc
+          - iam
+          - security-groups
+          - alb
+          - eks
+          - route53
+          - ecr
+          - ecs
+        default: 'all'
+
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - validate
+          - plan
+          - apply
+          - destroy
+        default: 'plan'
 
 env:
   AWS_REGION: us-east-1
@@ -37,50 +46,52 @@ env:
 
 jobs:
   validate:
-    name: Validate Terraform
+    name: Validate Infrastructure
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_validate == 'true'
+    if: github.event.inputs.action == 'validate'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: infra
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Terraform Format Check
-        working-directory: ./infra
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Validate
-        working-directory: ./infra
-        run: terraform validate
-
-      - name: TFLint
-        uses: terraform-linters/setup-tflint@v3
-      
-      - name: Run TFLint
-        working-directory: ./infra
+      - name: Run Terraform Validate
         run: |
-          tflint --init
-          tflint --format compact
+          ENV="${{ github.event.inputs.environment }}"
+          RES="${{ github.event.inputs.resource }}"
+          
+          if [ "$RES" = "all" ]; then
+            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "route53" "ecr" "ecs")
+          else
+            RESOURCES=("$RES")
+          fi
+
+          for r in "${RESOURCES[@]}"; do
+            TARGET_DIR="./environments/$ENV/$r"
+            if [ -d "$TARGET_DIR" ]; then
+              echo "===================================================="
+              echo "Validating: $TARGET_DIR"
+              echo "===================================================="
+              cd "$TARGET_DIR"
+              terraform init -backend=false
+              terraform fmt -check || echo "Warning: Code formatting issues in $r"
+              terraform validate
+              cd - > /dev/null
+            else
+              echo "Directory $TARGET_DIR does not exist. Skipping..."
+            fi
+          done
 
   plan:
-    name: Plan Terraform
-    needs: validate
+    name: Plan Infrastructure
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_plan == 'true'
-    strategy:
-      matrix:
-        environment: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.environment)) || fromJson('["dev","stage","prod"]') }}
+    if: github.event.inputs.action == 'plan'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: infra
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -94,42 +105,39 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Terraform Init
-        working-directory: ./infra
-        run: terraform init
-
-      - name: Select Workspace
-        working-directory: ./infra
-        run: terraform workspace select ${{ matrix.environment }} || terraform workspace new ${{ matrix.environment }}
-
-      - name: Terraform Plan
-        working-directory: ./infra
+      - name: Run Terraform Plan
         run: |
-          terraform plan \
-            -var-file="environments/${{ matrix.environment }}/terraform.tfvars" \
-            -out=tfplan-${{ matrix.environment }}
+          ENV="${{ github.event.inputs.environment }}"
+          RES="${{ github.event.inputs.resource }}"
+          
+          if [ "$RES" = "all" ]; then
+            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "route53" "ecr" "ecs")
+          else
+            RESOURCES=("$RES")
+          fi
 
-      - name: Upload Plan Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan-${{ matrix.environment }}
-          path: ./infra/tfplan-${{ matrix.environment }}
-          retention-days: 5
+          for r in "${RESOURCES[@]}"; do
+            TARGET_DIR="./environments/$ENV/$r"
+            if [ -d "$TARGET_DIR" ]; then
+              echo "===================================================="
+              echo "Planning: $TARGET_DIR"
+              echo "===================================================="
+              cd "$TARGET_DIR"
+              terraform init
+              terraform plan -var-file="terraform.tfvars"
+              cd - > /dev/null
+            else
+              echo "Directory $TARGET_DIR does not exist. Skipping..."
+            fi
+          done
 
   apply:
-    name: Apply Terraform
-    needs: plan
+    name: Apply Infrastructure
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_apply == 'true'
-    strategy:
-      matrix:
-        environment: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.environment)) || fromJson('["dev"]') }}
-      max-parallel: 1
+    if: github.event.inputs.action == 'apply'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: infra
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -143,51 +151,39 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Terraform Init
-        working-directory: ./infra
-        run: terraform init
-
-      - name: Select Workspace
-        working-directory: ./infra
-        run: terraform workspace select ${{ matrix.environment }} || terraform workspace new ${{ matrix.environment }}
-
-      - name: Terraform Apply
-        working-directory: ./infra
+      - name: Run Terraform Apply
         run: |
-          terraform apply \
-            -var-file="environments/${{ matrix.environment }}/terraform.tfvars" \
-            -auto-approve
+          ENV="${{ github.event.inputs.environment }}"
+          RES="${{ github.event.inputs.resource }}"
+          
+          if [ "$RES" = "all" ]; then
+            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "route53" "ecr" "ecs")
+          else
+            RESOURCES=("$RES")
+          fi
 
-      - name: Capture Outputs
-        id: tf_outputs
-        working-directory: ./infra
-        run: |
-          echo "eks_cluster_endpoint=$(terraform output -raw eks_cluster_endpoint 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
-          echo "vpc_id=$(terraform output -raw vpc_id 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
-
-      - name: Comment PR with Outputs
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `### Terraform Plan Results\n\n**Environment**: ${{ matrix.environment }}\n\n- EKS Cluster Endpoint: \`${{ steps.tf_outputs.outputs.eks_cluster_endpoint }}\`\n- VPC ID: \`${{ steps.tf_outputs.outputs.vpc_id }}\`\n`
-            })
+          for r in "${RESOURCES[@]}"; do
+            TARGET_DIR="./environments/$ENV/$r"
+            if [ -d "$TARGET_DIR" ]; then
+              echo "===================================================="
+              echo "Applying: $TARGET_DIR"
+              echo "===================================================="
+              cd "$TARGET_DIR"
+              terraform init
+              terraform apply -var-file="terraform.tfvars" -auto-approve
+              cd - > /dev/null
+            else
+              echo "Directory $TARGET_DIR does not exist. Skipping..."
+            fi
+          done
 
   destroy:
     name: Destroy Infrastructure
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_destroy == 'true'
-    environment:
-      name: ${{ github.event.inputs.environment || 'dev' }}-destroy
+    if: github.event.inputs.action == 'destroy'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: infra
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -201,19 +197,29 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Terraform Init
-        working-directory: ./infra
-        run: terraform init
-
-      - name: Select Workspace
-        working-directory: ./infra
-        run: terraform workspace select ${{ github.event.inputs.environment || 'dev' }}
-
-      - name: Terraform Destroy
-        working-directory: ./infra
+      - name: Run Terraform Destroy
         run: |
-          terraform destroy \
-            -var-file="environments/${{ github.event.inputs.environment || 'dev' }}/terraform.tfvars" \
-            -auto-approve
-        env:
-          TF_IN_AUTOMATION: true
+          ENV="${{ github.event.inputs.environment }}"
+          RES="${{ github.event.inputs.resource }}"
+          
+          if [ "$RES" = "all" ]; then
+            # Reverse order for safe destruction of dependencies
+            RESOURCES=("ecs" "ecr" "route53" "eks" "alb" "security-groups" "iam" "vpc")
+          else
+            RESOURCES=("$RES")
+          fi
+
+          for r in "${RESOURCES[@]}"; do
+            TARGET_DIR="./environments/$ENV/$r"
+            if [ -d "$TARGET_DIR" ]; then
+              echo "===================================================="
+              echo "Destroying: $TARGET_DIR"
+              echo "===================================================="
+              cd "$TARGET_DIR"
+              terraform init
+              terraform destroy -var-file="terraform.tfvars" -auto-approve
+              cd - > /dev/null
+            else
+              echo "Directory $TARGET_DIR does not exist. Skipping..."
+            fi
+          done

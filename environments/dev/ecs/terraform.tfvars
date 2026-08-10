@@ -1,0 +1,11 @@
+aws_region                  = "us-east-1"
+project_name                = "istio-baremetal-k8s"
+environment                 = "dev"
+vpc_id                      = ""
+subnet_ids                  = []
+security_group_id           = ""
+ecs_task_execution_role_arn = ""
+container_image             = ""
+container_port              = 80
+target_group_arn            = ""
+desired_count               = 1

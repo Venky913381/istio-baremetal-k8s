@@ -1,0 +1,12 @@
+aws_region       = "us-east-1"
+project_name     = "istio-baremetal-k8s"
+environment      = "dev"
+cluster_version  = "1.28"
+vpc_id           = ""
+subnet_ids       = []
+cluster_role_arn = ""
+node_role_arn    = ""
+desired_size     = 2
+max_size         = 3
+min_size         = 1
+instance_types   = ["t3.medium"]
