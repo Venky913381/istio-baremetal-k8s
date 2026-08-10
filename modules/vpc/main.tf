@@ -104,7 +104,7 @@ resource "aws_route_table" "private" {
 # Private Route Table Routes
 resource "aws_route" "private_nat" {
   count                  = var.enable_nat_gateway ? (var.single_nat_gateway ? length(var.availability_zones) : length(var.availability_zones)) : 0
-  route_table_id         = var.single_nat_gateway ? aws_route_table.private[count.index].id : aws_route_table.private[count.index].id
+  route_table_id         = var.single_nat_gateway ? aws_route_table.private[0].id : aws_route_table.private[count.index].id
   destination_cidr_block = "0.0.0.0/0"
   nat_gateway_id         = var.single_nat_gateway ? aws_nat_gateway.main[0].id : aws_nat_gateway.main[count.index].id
 }
