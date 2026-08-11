@@ -1,5 +1,6 @@
 terraform {
   required_version = ">= 1.0"
+  backend "s3" {}
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -15,26 +16,30 @@ provider "aws" {
 # Remote state inputs from VPC
 data "terraform_remote_state" "vpc" {
   count   = var.vpc_id == "" || length(var.subnet_ids) == 0 ? 1 : 0
-  backend = "local"
+  backend = "s3"
 
   config = {
-    path = "${path.module}/../vpc/terraform.tfstate"
+    bucket = var.tf_state_bucket
+    key    = "environments/${var.environment}/vpc/terraform.tfstate"
+    region = var.aws_region
   }
 }
 
 # Remote state inputs from IAM
 data "terraform_remote_state" "iam" {
   count   = var.cluster_role_arn == "" || var.node_role_arn == "" ? 1 : 0
-  backend = "local"
+  backend = "s3"
 
   config = {
-    path = "${path.module}/../iam/terraform.tfstate"
+    bucket = var.tf_state_bucket
+    key    = "environments/${var.environment}/iam/terraform.tfstate"
+    region = var.aws_region
   }
 }
 
 locals {
   vpc_id           = var.vpc_id != "" ? var.vpc_id : data.terraform_remote_state.vpc[0].outputs.vpc_id
-  subnet_ids       = length(var.subnet_ids) > 0 ? var.subnet_ids : data.terraform_remote_state.vpc[0].outputs.private_subnet_ids
+  subnet_ids       = length(var.subnet_ids) > 0 ? var.subnet_ids : data.terraform_remote_state.vpc[0].outputs.public_subnet_ids
   cluster_role_arn = var.cluster_role_arn != "" ? var.cluster_role_arn : data.terraform_remote_state.iam[0].outputs.eks_cluster_role_arn
   node_role_arn    = var.node_role_arn != "" ? var.node_role_arn : data.terraform_remote_state.iam[0].outputs.eks_node_role_arn
 }

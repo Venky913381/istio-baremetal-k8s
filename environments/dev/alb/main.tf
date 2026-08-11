@@ -1,5 +1,6 @@
 terraform {
   required_version = ">= 1.0"
+  backend "s3" {}
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -15,20 +16,24 @@ provider "aws" {
 # Remote state inputs from VPC
 data "terraform_remote_state" "vpc" {
   count   = var.vpc_id == "" || length(var.subnet_ids) == 0 ? 1 : 0
-  backend = "local"
+  backend = "s3"
 
   config = {
-    path = "${path.module}/../vpc/terraform.tfstate"
+    bucket = var.tf_state_bucket
+    key    = "environments/${var.environment}/vpc/terraform.tfstate"
+    region = var.aws_region
   }
 }
 
 # Remote state inputs from Security Groups
 data "terraform_remote_state" "security_groups" {
   count   = var.security_group_id == "" ? 1 : 0
-  backend = "local"
+  backend = "s3"
 
   config = {
-    path = "${path.module}/../security-groups/terraform.tfstate"
+    bucket = var.tf_state_bucket
+    key    = "environments/${var.environment}/security-groups/terraform.tfstate"
+    region = var.aws_region
   }
 }
 

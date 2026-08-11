@@ -34,7 +34,7 @@ variable "availability_zones" {
 variable "enable_nat_gateway" {
   type        = bool
   description = "Enable NAT Gateway for private subnets"
-  default     = true
+  default     = false
 }
 
 variable "single_nat_gateway" {

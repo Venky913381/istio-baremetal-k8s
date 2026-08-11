@@ -1,5 +1,6 @@
 terraform {
   required_version = ">= 1.0"
+  backend "s3" {}
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -15,56 +16,66 @@ provider "aws" {
 # Remote state inputs from VPC
 data "terraform_remote_state" "vpc" {
   count   = var.vpc_id == "" || length(var.subnet_ids) == 0 ? 1 : 0
-  backend = "local"
+  backend = "s3"
 
   config = {
-    path = "${path.module}/../vpc/terraform.tfstate"
+    bucket = var.tf_state_bucket
+    key    = "environments/${var.environment}/vpc/terraform.tfstate"
+    region = var.aws_region
   }
 }
 
 # Remote state inputs from Security Groups
 data "terraform_remote_state" "security_groups" {
   count   = var.security_group_id == "" ? 1 : 0
-  backend = "local"
+  backend = "s3"
 
   config = {
-    path = "${path.module}/../security-groups/terraform.tfstate"
+    bucket = var.tf_state_bucket
+    key    = "environments/${var.environment}/security-groups/terraform.tfstate"
+    region = var.aws_region
   }
 }
 
 # Remote state inputs from IAM
 data "terraform_remote_state" "iam" {
   count   = var.ecs_task_execution_role_arn == "" ? 1 : 0
-  backend = "local"
+  backend = "s3"
 
   config = {
-    path = "${path.module}/../iam/terraform.tfstate"
+    bucket = var.tf_state_bucket
+    key    = "environments/${var.environment}/iam/terraform.tfstate"
+    region = var.aws_region
   }
 }
 
 # Remote state inputs from ALB
 data "terraform_remote_state" "alb" {
   count   = var.target_group_arn == "" ? 1 : 0
-  backend = "local"
+  backend = "s3"
 
   config = {
-    path = "${path.module}/../alb/terraform.tfstate"
+    bucket = var.tf_state_bucket
+    key    = "environments/${var.environment}/alb/terraform.tfstate"
+    region = var.aws_region
   }
 }
 
 # Remote state inputs from ECR
 data "terraform_remote_state" "ecr" {
   count   = var.container_image == "" ? 1 : 0
-  backend = "local"
+  backend = "s3"
 
   config = {
-    path = "${path.module}/../ecr/terraform.tfstate"
+    bucket = var.tf_state_bucket
+    key    = "environments/${var.environment}/ecr/terraform.tfstate"
+    region = var.aws_region
   }
 }
 
 locals {
   vpc_id                      = var.vpc_id != "" ? var.vpc_id : data.terraform_remote_state.vpc[0].outputs.vpc_id
-  subnet_ids                  = length(var.subnet_ids) > 0 ? var.subnet_ids : data.terraform_remote_state.vpc[0].outputs.private_subnet_ids
+  subnet_ids                  = length(var.subnet_ids) > 0 ? var.subnet_ids : data.terraform_remote_state.vpc[0].outputs.public_subnet_ids
   security_group_id           = var.security_group_id != "" ? var.security_group_id : data.terraform_remote_state.security_groups[0].outputs.ecs_security_group_id
   ecs_task_execution_role_arn = var.ecs_task_execution_role_arn != "" ? var.ecs_task_execution_role_arn : data.terraform_remote_state.iam[0].outputs.ecs_task_execution_role_arn
   container_image             = var.container_image != "" ? var.container_image : data.terraform_remote_state.ecr[0].outputs.ecr_repository_url

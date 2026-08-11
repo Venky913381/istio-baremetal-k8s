@@ -1,5 +1,6 @@
 terraform {
   required_version = ">= 1.0"
+  backend "s3" {}
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -15,10 +16,12 @@ provider "aws" {
 # Remote state to get VPC details if vpc_id is not explicitly provided
 data "terraform_remote_state" "vpc" {
   count   = var.vpc_id == "" ? 1 : 0
-  backend = "local"
+  backend = "s3"
 
   config = {
-    path = "${path.module}/../vpc/terraform.tfstate"
+    bucket = var.tf_state_bucket
+    key    = "environments/${var.environment}/vpc/terraform.tfstate"
+    region = var.aws_region
   }
 }
 

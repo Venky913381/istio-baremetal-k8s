@@ -4,6 +4,12 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "tf_state_bucket" {
+  description = "The S3 bucket for Terraform state."
+  type        = string
+  default     = "istio-baremetal-k8s-tfstate"
+}
+
 variable "project_name" {
   description = "The name of the project."
   type        = string
