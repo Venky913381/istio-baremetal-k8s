@@ -1,4 +1,4 @@
-name: Deploy Infrastructure
+name: Deploy EKS Infrastructure
 
 on:
   workflow_dispatch:
@@ -25,7 +25,6 @@ on:
           - alb
           - eks
           - ecr
-          - ecs
         default: 'all'
 
       action:
@@ -48,7 +47,7 @@ env:
 
 jobs:
   init:
-    name: Init Infrastructure Backend
+    name: Init EKS Infrastructure Backend
     runs-on: ubuntu-latest
     if: github.event.inputs.action == 'init'
     environment: ${{ github.event.inputs.environment }}
@@ -74,7 +73,7 @@ jobs:
           RES="${{ github.event.inputs.resource }}"
           
           if [ "$RES" = "all" ]; then
-            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "ecr" "ecs")
+            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "ecr")
           else
             RESOURCES=("$RES")
           fi
@@ -102,7 +101,7 @@ jobs:
           done
 
   validate:
-    name: Validate Infrastructure
+    name: Validate EKS Infrastructure
     runs-on: ubuntu-latest
     if: github.event.inputs.action == 'validate'
     environment: ${{ github.event.inputs.environment }}
@@ -121,7 +120,7 @@ jobs:
           RES="${{ github.event.inputs.resource }}"
           
           if [ "$RES" = "all" ]; then
-            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "ecr" "ecs")
+            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "ecr")
           else
             RESOURCES=("$RES")
           fi
@@ -143,7 +142,7 @@ jobs:
           done
 
   plan:
-    name: Plan Infrastructure
+    name: Plan EKS Infrastructure
     runs-on: ubuntu-latest
     if: github.event.inputs.action == 'plan'
     environment: ${{ github.event.inputs.environment }}
@@ -169,7 +168,7 @@ jobs:
           RES="${{ github.event.inputs.resource }}"
           
           if [ "$RES" = "all" ]; then
-            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "ecr" "ecs")
+            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "ecr")
           else
             RESOURCES=("$RES")
           fi
@@ -198,7 +197,7 @@ jobs:
           done
 
   apply:
-    name: Apply Infrastructure
+    name: Apply EKS Infrastructure
     runs-on: ubuntu-latest
     if: github.event.inputs.action == 'apply'
     environment: ${{ github.event.inputs.environment }}
@@ -224,7 +223,7 @@ jobs:
           RES="${{ github.event.inputs.resource }}"
           
           if [ "$RES" = "all" ]; then
-            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "ecr" "ecs")
+            RESOURCES=("vpc" "iam" "security-groups" "alb" "eks" "ecr")
           else
             RESOURCES=("$RES")
           fi
@@ -253,7 +252,7 @@ jobs:
           done
 
   destroy:
-    name: Destroy Infrastructure
+    name: Destroy EKS Infrastructure
     runs-on: ubuntu-latest
     if: github.event.inputs.action == 'destroy'
     environment: ${{ github.event.inputs.environment }}
@@ -280,7 +279,7 @@ jobs:
           
           if [ "$RES" = "all" ]; then
             # Reverse order for safe destruction of dependencies
-            RESOURCES=("ecs" "ecr" "eks" "alb" "security-groups" "iam" "vpc")
+            RESOURCES=("ecr" "eks" "alb" "security-groups" "iam" "vpc")
           else
             RESOURCES=("$RES")
           fi

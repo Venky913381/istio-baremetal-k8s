@@ -13,9 +13,8 @@ environments/dev/
 ├── security-groups/    # Security Groups (ALB, EKS, DB, ECS)
 ├── alb/                # Application Load Balancer & Target Groups
 ├── eks/                # EKS Cluster & Managed Node Group
-├── route53/            # Route53 Hosted Zone & Health Checks
 ├── ecr/                # Elastic Container Registry Repository
-└── ecs/                # ECS Cluster, Task Definition & Fargate Service
+└── ecs/                # ECS Cluster, Task Definition & Fargate Service (Spot Mode)
 ```
 
 Each folder contains:
@@ -65,14 +64,7 @@ Because certain resources depend on others (e.g. Security Groups need VPC ID, EK
    terraform apply
    ```
 
-6. **Route53 Stack**:
-   ```bash
-   cd environments/dev/route53
-   terraform init
-   terraform apply
-   ```
-
-7. **ECR Stack** *(Optional)*:
+6. **ECR Stack** *(Optional)*:
    ```bash
    cd environments/dev/ecr
    terraform init

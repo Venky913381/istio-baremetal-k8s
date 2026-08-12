@@ -49,9 +49,9 @@ data "terraform_remote_state" "iam" {
   }
 }
 
-# Remote state inputs from ALB
+# Remote state inputs from ALB (only if enable_alb is true and target_group_arn is empty)
 data "terraform_remote_state" "alb" {
-  count   = var.target_group_arn == "" ? 1 : 0
+  count   = var.enable_alb && var.target_group_arn == "" ? 1 : 0
   backend = "s3"
 
   config = {
@@ -79,7 +79,7 @@ locals {
   security_group_id           = var.security_group_id != "" ? var.security_group_id : data.terraform_remote_state.security_groups[0].outputs.ecs_security_group_id
   ecs_task_execution_role_arn = var.ecs_task_execution_role_arn != "" ? var.ecs_task_execution_role_arn : data.terraform_remote_state.iam[0].outputs.ecs_task_execution_role_arn
   container_image             = var.container_image != "" ? var.container_image : data.terraform_remote_state.ecr[0].outputs.ecr_repository_url
-  target_group_arn            = var.target_group_arn != "" ? var.target_group_arn : data.terraform_remote_state.alb[0].outputs.target_group_arn
+  target_group_arn            = var.target_group_arn != "" ? var.target_group_arn : (var.enable_alb && length(data.terraform_remote_state.alb) > 0 ? data.terraform_remote_state.alb[0].outputs.target_group_arn : "")
 }
 
 module "ecs" {

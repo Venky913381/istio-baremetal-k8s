@@ -16,14 +16,17 @@ infra/
 │   ├── iam/
 │   ├── ecr/
 │   ├── alb/
-│   ├── route53/
+│   ├── ecs/
 │   └── security-groups/
 ├── backend.tf
 ```
 
-## CI/CD: GitHub Actions workflow
+## CI/CD: GitHub Actions Workflows
 
-A GitHub Actions workflow `.github/workflows/deploy-infra.yml` is included to validate, plan, apply, and destroy the Terraform-managed infrastructure. The workflow supports both automatic triggers (push / pull_request) and manual runs (workflow_dispatch).
+Three GitHub Actions workflows are included:
+1. `.github/workflows/deploy-infra.yml` - Combined pipeline for both ECS and EKS (VPC, IAM, Security Groups, ALB, EKS, ECR, ECS).
+2. `.github/workflows/deploy-ecs.yml` - Standalone ECS pipeline (VPC, IAM, Security Groups, ECR, ECS) using Fargate Spot and public IP exposure (without ALB dependency to reduce cost).
+3. `.github/workflows/deploy-eks.yml` - Standalone EKS pipeline (VPC, IAM, Security Groups, ALB, EKS, ECR).
 
 Key behavior:
 

@@ -64,6 +64,12 @@ variable "target_group_arn" {
   default     = ""
 }
 
+variable "enable_alb" {
+  description = "Whether to attach an ALB target group to ECS service."
+  type        = bool
+  default     = false
+}
+
 variable "desired_count" {
   description = "Desired number of task instances."
   type        = number

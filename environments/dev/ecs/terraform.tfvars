@@ -8,4 +8,5 @@ ecs_task_execution_role_arn = ""
 container_image             = ""
 container_port              = 80
 target_group_arn            = ""
+enable_alb                  = false
 desired_count               = 1
