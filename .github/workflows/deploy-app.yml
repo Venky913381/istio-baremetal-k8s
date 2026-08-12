@@ -3,6 +3,7 @@ name: Build and Deploy Application Services
 on:
   push:
     branches:
+      - infra
       - application
     paths:
       - 'backend/**'
