@@ -1,66 +1,143 @@
-# AWS Infrastructure with Terraform
+# Application Microservices Deployment Guide (`application` branch)
 
-This directory contains the Terraform configuration for provisioning AWS infrastructure for Istio Bare Metal Kubernetes Lab.
+This repository branch contains the complete source code, Docker configurations, and CI/CD deployment pipelines for a multi-service Python Web Application designed to run seamlessly on AWS ECS (Fargate) and AWS EKS clusters.
 
-## Project Structure
+---
 
+## 🏗️ Application Architecture & Directory Structure
+
+The application consists of two decoupled microservices and a relational database:
+
+```text
+.
+├── backend/                  # Python FastAPI REST API Microservice (Port 8000)
+│   ├── app/
+│   │   ├── database.py       # SQLAlchemy Database Engine (PostgreSQL / SQLite fallback)
+│   │   ├── models.py         # DB Models (Users, Products, Orders)
+│   │   ├── schemas.py        # Pydantic Schemas & Data Validation
+│   │   └── main.py           # FastAPI Endpoints & Health Checks
+│   ├── Dockerfile            # Standalone Backend Dockerfile
+│   └── requirements.txt
+│
+├── frontend/                 # Python Flask Web Portal & UI (Port 5000)
+│   ├── app.py                # Flask Router & Backend API Client
+│   ├── static/css/style.css  # Modern Glassmorphism & Dark Mode Styling
+│   ├── templates/            # HTML Views (Dashboard, Users, Products, Orders)
+│   ├── Dockerfile            # Standalone Frontend Dockerfile
+│   └── requirements.txt
+│
+├── db/                       # Database Initialization
+│   └── init.sql              # PostgreSQL Schema Creation & Seed Data
+│
+├── docker-compose.yml        # Local Multi-Container Orchestration
+└── .github/workflows/
+    └── deploy-app.yml        # CI/CD Pipeline (Build Docker -> Push ECR -> Deploy AWS)
 ```
-infra/
-├── environments/
-│   ├── dev/
-│   ├── stage/
-│   └── prod/
-├── modules/
-│   ├── vpc/
-│   ├── eks/
-│   ├── iam/
-│   ├── ecr/
-│   ├── alb/
-│   ├── ecs/
-│   └── security-groups/
-├── backend.tf
+
+---
+
+## 🔌 Service Connectivity & Inter-Communication
+
+The services are decoupled and communicate over standard HTTP REST APIs using environment variables:
+
+```text
+┌─────────────────────────┐          HTTP REST API          ┌─────────────────────────┐          SQL Connection         ┌─────────────────────────┐
+│    Frontend Service     │ ──────────────────────────────> │     Backend Service     │ ──────────────────────────────> │    Database / Storage   │
+│  (Port 5000 / Python)   │   BACKEND_URL=http://api:8000   │  (Port 8000 / FastAPI)  │   DB_HOST=db.example.com    │   (PostgreSQL / RDS)    │
+└─────────────────────────┘                                 └─────────────────────────┘                                 └─────────────────────────┘
 ```
 
-## CI/CD: GitHub Actions Workflows
+1. **Frontend $\rightarrow$ Backend**:
+   - Configured via **`BACKEND_URL`** (default: `http://backend:8000`).
+   - On AWS ECS / Public IP: Set `BACKEND_URL="http://<BACKEND_PUBLIC_IP>:8000"`.
+   - On AWS EKS: Set `BACKEND_URL="http://backend-service:8000"` (Kubernetes Service DNS).
 
-Three GitHub Actions workflows are included:
-1. `.github/workflows/deploy-infra.yml` - Combined pipeline for both ECS and EKS (VPC, IAM, Security Groups, ALB, EKS, ECR, ECS).
-2. `.github/workflows/deploy-ecs.yml` - Standalone ECS pipeline (VPC, IAM, Security Groups, ECR, ECS) using Fargate Spot and public IP exposure (without ALB dependency to reduce cost).
-3. `.github/workflows/deploy-eks.yml` - Standalone EKS pipeline (VPC, IAM, Security Groups, ALB, EKS, ECR).
+2. **Backend $\rightarrow$ Database**:
+   - Configured via `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`.
+   - **Fallback Mode**: If `USE_SQLITE=true` is set, the backend runs 100% standalone using an embedded SQLite database without needing external DB setup.
 
-Key behavior:
+---
 
-- Pushes to the `infra` branch:
-  - Run the `validate` job (format, validate, tflint).
-  - On push (refs/heads/infra) the `apply` job runs (applies to the `dev` workspace by default).
-- Pull requests targeting `infra`:
-  - Run `validate` and `plan` for dev/stage/prod (matrix) and upload the plan artifact.
-- workflow_dispatch (manual run):
-  - The manual trigger accepts inputs:
-    - environment: one of `dev`, `stage`, `prod` (required)
-    - run_validate: boolean (default: false)
-    - run_plan: boolean (default: false)
-    - run_apply: boolean (default: false)
-    - run_destroy: boolean (default: false)
-  - Use these booleans to control which jobs run. Examples:
-    - Plan only for `stage`: set `environment=stage`, `run_plan=true`.
-    - Validate + Plan for `prod`: set `environment=prod`, `run_validate=true`, `run_plan=true`.
-    - Apply for `dev`: set `environment=dev`, `run_apply=true` (requires AWS secrets).
-    - Destroy for `dev`: set `environment=dev`, `run_destroy=true` (use with caution).
+## 🛠️ Building & Running Images Separately (Without Docker Compose)
 
-Secrets required for plan/apply/destroy:
+You can build and run each service independently using standard Docker commands:
 
-- AWS_ACCESS_KEY_ID
-- AWS_SECRET_ACCESS_KEY
+### Step 1: Build the Container Images Separately
 
-These must be added to repository or organization secrets.
+```bash
+# Build Backend Image
+docker build -t cloud-backend ./backend
 
-Notes and recommendations:
+# Build Frontend Image
+docker build -t cloud-frontend ./frontend
+```
 
-- The workflow uploads plan artifacts for review when planning; you can download plans from the workflow run artifacts if needed.
-- For safety, consider protecting stage/prod apply with one of these options:
-  - Add branch protection/environment protection with required reviewers for the `stage` and `prod` environments.
-  - Require manual approval before running `apply` in non-dev environments.
-- If you want different default behavior for the manual inputs (for example default `run_plan=true`), update the workflow inputs accordingly.
+### Step 2: Run Services on a Docker Bridge Network
 
-If you want, I can add a short example section showing screenshots/step-by-step of triggering the workflow from the Actions UI or provide a separate docs file with run examples.
+```bash
+# 1. Create a custom docker bridge network
+docker network create cloud-net
+
+# 2. Run Backend container (using internal SQLite DB fallback for simplicity)
+docker run -d --name backend \
+  --network cloud-net \
+  -p 8000:8000 \
+  -e USE_SQLITE=true \
+  cloud-backend
+
+# 3. Run Frontend container (connects to backend via container name)
+docker run -d --name frontend \
+  --network cloud-net \
+  -p 5000:5000 \
+  -e BACKEND_URL="http://backend:8000" \
+  cloud-frontend
+```
+
+### Step 3: Access the Applications
+
+- **Frontend Portal**: Navigate to `http://localhost:5000`
+- **Backend API Docs**: Navigate to `http://localhost:8000/docs` (Swagger UI)
+- **Backend Healthcheck**: `http://localhost:8000/api/health`
+
+---
+
+## 🚀 Local Run using Docker Compose
+
+To launch all 3 services (PostgreSQL, Backend API, Frontend Web App) together with one command:
+
+```bash
+docker-compose up --build
+```
+
+---
+
+## 📦 CI/CD Pipeline (`deploy-app.yml`)
+
+The GitHub Actions workflow [`.github/workflows/deploy-app.yml`](.github/workflows/deploy-app.yml) automates the build and deployment process.
+
+### Pipeline Workflow:
+1. **Trigger**:
+   - Push to `application` branch (when changes occur in `backend/` or `frontend/`).
+   - Manual trigger (`workflow_dispatch`) with parameters for target `environment` (`dev`, `stage`, `prod`) and `service` (`all`, `frontend`, `backend`).
+2. **Build & Tag**:
+   - Builds Docker images for `frontend` and `backend` separately.
+   - Tags images with Git commit SHA (`${GITHUB_SHA::7}`) and `latest`.
+3. **Push to Amazon ECR**:
+   - Authenticates to AWS ECR via `aws-actions/amazon-ecr-login`.
+   - Pushes separate container images to dedicated ECR repositories.
+4. **Deploy**:
+   - Triggers deployment update to target AWS ECS / EKS infrastructure.
+
+---
+
+## 🔐 Required GitHub Secrets for CI/CD
+
+Add the following secrets to your GitHub Repository (**Settings > Secrets and variables > Actions**):
+
+| Secret Name | Description | Example / Default |
+| :--- | :--- | :--- |
+| `AWS_ACCESS_KEY_ID` | AWS IAM Access Key ID | `AKIAIOSFODNN7EXAMPLE` |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM Secret Access Key | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
+| `AWS_REGION` | Target AWS Region | `us-east-1` |
+| `ECR_FRONTEND_REPO` | Amazon ECR Repo for Frontend | `istio-baremetal-k8s-dev-frontend` |
+| `ECR_BACKEND_REPO` | Amazon ECR Repo for Backend | `istio-baremetal-k8s-dev-backend` |
