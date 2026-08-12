@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Cloud App{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">System Overview</h1>
+    <p style="color: var(--text-muted);">Real-time metrics from Backend API Service</p>
+  </div>
+</div>
+
+<div class="grid-stats">
+  <div class="stat-card">
+    <div class="stat-label"><i class="fa-solid fa-users"></i> Registered Users</div>
+    <div class="stat-value">{{ users_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label"><i class="fa-solid fa-box"></i> Active Products</div>
+    <div class="stat-value">{{ products_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label"><i class="fa-solid fa-cart-shopping"></i> Total Orders</div>
+    <div class="stat-value">{{ orders_count }}</div>
+  </div>
+</div>
+
+<div class="page-header" style="margin-top: 2rem;">
+  <h2>Recent Transactions</h2>
+</div>
+
+<div class="table-card">
+  <table>
+    <thead>
+      <tr>
+        <th>Order ID</th>
+        <th>User ID</th>
+        <th>Product ID</th>
+        <th>Quantity</th>
+        <th>Total Price</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in recent_orders %}
+      <tr>
+        <td>#{{ order.id }}</td>
+        <td>User #{{ order.user_id }}</td>
+        <td>Product #{{ order.product_id }}</td>
+        <td>{{ order.quantity }}</td>
+        <td>${{ "%.2f"|format(order.total_price) }}</td>
+        <td><span class="badge badge-success">{{ order.status }}</span></td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" style="text-align: center; color: var(--text-muted);">No recent orders found</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

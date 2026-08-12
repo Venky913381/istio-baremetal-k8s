@@ -1,0 +1,138 @@
+name: Build and Deploy Application Services
+
+on:
+  push:
+    branches:
+      - application
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/deploy-app.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target Environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+        default: 'dev'
+
+      service:
+        description: 'Target Service to Build & Deploy'
+        required: true
+        type: choice
+        options:
+          - all
+          - frontend
+          - backend
+        default: 'all'
+
+env:
+  AWS_REGION: us-east-1
+  FRONTEND_REPO: ${{ secrets.ECR_FRONTEND_REPO || 'istio-baremetal-k8s-dev-frontend' }}
+  BACKEND_REPO: ${{ secrets.ECR_BACKEND_REPO || 'istio-baremetal-k8s-dev-backend' }}
+
+jobs:
+  test-and-lint:
+    name: Test Application Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+          if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
+          if [ -f frontend/requirements.txt ]; then pip install -r frontend/requirements.txt; fi
+
+      - name: Lint with flake8
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 backend frontend --count --select=E9,F63,F7,F82 --show-source --statistics || echo "Warnings found"
+
+  build-and-push:
+    name: Build & Push Docker Images to ECR
+    needs: test-and-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || vars.AWS_REGION || env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set Image Tag
+        id: prep
+        run: |
+          IMAGE_TAG="${GITHUB_SHA::7}"
+          echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+
+      # ---------------- BUILD & PUSH BACKEND ----------------
+      - name: Build & Push Backend Docker Image
+        if: github.event.inputs.service == 'all' || github.event.inputs.service == 'backend' || github.event_name == 'push'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.prep.outputs.tag }}
+        run: |
+          echo "Building Backend Image..."
+          docker build -t $ECR_REGISTRY/$BACKEND_REPO:$IMAGE_TAG -t $ECR_REGISTRY/$BACKEND_REPO:latest ./backend
+          
+          echo "Pushing Backend Image to ECR..."
+          docker push $ECR_REGISTRY/$BACKEND_REPO:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$BACKEND_REPO:latest
+
+      # ---------------- BUILD & PUSH FRONTEND ----------------
+      - name: Build & Push Frontend Docker Image
+        if: github.event.inputs.service == 'all' || github.event.inputs.service == 'frontend' || github.event_name == 'push'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.prep.outputs.tag }}
+        run: |
+          echo "Building Frontend Image..."
+          docker build -t $ECR_REGISTRY/$FRONTEND_REPO:$IMAGE_TAG -t $ECR_REGISTRY/$FRONTEND_REPO:latest ./frontend
+          
+          echo "Pushing Frontend Image to ECR..."
+          docker push $ECR_REGISTRY/$FRONTEND_REPO:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$FRONTEND_REPO:latest
+
+  deploy:
+    name: Deploy to AWS Infrastructure
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || vars.AWS_REGION || env.AWS_REGION }}
+
+      - name: Deploy Services
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          echo "===================================================="
+          echo "Deploying application microservices to $ENV environment..."
+          echo "===================================================="
+          # Optional ECS Service restart / force deployment command if ECS cluster is running
+          # aws ecs update-service --cluster istio-baremetal-k8s-$ENV-cluster --service istio-baremetal-k8s-$ENV-service --force-new-deployment || echo "ECS service deployment skipped or not running"

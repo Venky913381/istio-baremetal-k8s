@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Orders - Cloud App{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Order Management</h1>
+    <p style="color: var(--text-muted);">Process and manage customer service orders</p>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>User ID</th>
+          <th>Product ID</th>
+          <th>Quantity</th>
+          <th>Total Price</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr>
+          <td>#{{ order.id }}</td>
+          <td>User #{{ order.user_id }}</td>
+          <td>Product #{{ order.product_id }}</td>
+          <td>{{ order.quantity }}</td>
+          <td>${{ "%.2f"|format(order.total_price) }}</td>
+          <td><span class="badge badge-success">{{ order.status }}</span></td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align: center; color: var(--text-muted);">No orders placed yet</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="stat-card" style="height: fit-content;">
+    <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-cart-plus"></i> Place New Order</h3>
+    <form action="/orders/add" method="POST">
+      <div class="form-group">
+        <label>Select User</label>
+        <select name="user_id" class="form-control" required>
+          {% for u in users %}
+          <option value="{{ u.id }}">{{ u.name }} (ID: {{ u.id }})</option>
+          {% else %}
+          <option value="">No users available</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Select Product</label>
+        <select name="product_id" class="form-control" required>
+          {% for p in products %}
+          <option value="{{ p.id }}">{{ p.name }} - ${{ "%.2f"|format(p.price) }}</option>
+          {% else %}
+          <option value="">No products available</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Quantity</label>
+        <input type="number" min="1" value="1" name="quantity" class="form-control" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;">Place Order</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

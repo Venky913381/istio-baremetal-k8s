@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Products - Cloud App{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Product Catalog</h1>
+    <p style="color: var(--text-muted);">Cloud infrastructure services & catalog items</p>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>SKU</th>
+          <th>Price</th>
+          <th>Stock</th>
+          <th>Category</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for prod in products %}
+        <tr>
+          <td>#{{ prod.id }}</td>
+          <td><strong>{{ prod.name }}</strong></td>
+          <td><code>{{ prod.sku }}</code></td>
+          <td>${{ "%.2f"|format(prod.price) }}</td>
+          <td><span class="badge badge-success">{{ prod.stock }} units</span></td>
+          <td>{{ prod.category }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align: center; color: var(--text-muted);">No products found</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="stat-card" style="height: fit-content;">
+    <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-plus-circle"></i> Add New Product</h3>
+    <form action="/products/add" method="POST">
+      <div class="form-group">
+        <label>Product Name</label>
+        <input type="text" name="name" class="form-control" placeholder="e.g. Istio Service Mesh" required>
+      </div>
+      <div class="form-group">
+        <label>SKU</label>
+        <input type="text" name="sku" class="form-control" placeholder="ISTIO-101" required>
+      </div>
+      <div class="form-group">
+        <label>Price ($)</label>
+        <input type="number" step="0.01" name="price" class="form-control" placeholder="149.99" required>
+      </div>
+      <div class="form-group">
+        <label>Stock Quantity</label>
+        <input type="number" name="stock" class="form-control" placeholder="50" required>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <input type="text" name="category" class="form-control" placeholder="Networking">
+      </div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;">Create Product</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
