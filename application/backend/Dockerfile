@@ -1,12 +1,8 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+# psycopg2-binary ships precompiled wheels, so no gcc/libpq-dev build toolchain is needed here.
 
 # Install Python requirements
 COPY requirements.txt .

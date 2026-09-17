@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: postgrespassword
       POSTGRES_DB: appdb
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -31,11 +31,22 @@ services:
       - DB_PORT=5432
       - DB_NAME=appdb
       - USE_SQLITE=false
+      - INVENTORY_URL=http://inventory:8001
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      inventory:
+        condition: service_started
+
+  inventory:
+    build:
+      context: ./inventory
+      dockerfile: Dockerfile
+    container_name: app_inventory
+    ports:
+      - "8001:8001"
 
   frontend:
     build:

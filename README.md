@@ -10,28 +10,31 @@ The application consists of two decoupled microservices and a relational databas
 
 ```text
 .
-├── backend/                  # Python FastAPI REST API Microservice (Port 8000)
-│   ├── app/
-│   │   ├── database.py       # SQLAlchemy Database Engine (PostgreSQL / SQLite fallback)
-│   │   ├── models.py         # DB Models (Users, Products, Orders)
-│   │   ├── schemas.py        # Pydantic Schemas & Data Validation
-│   │   └── main.py           # FastAPI Endpoints & Health Checks
-│   ├── Dockerfile            # Standalone Backend Dockerfile
-│   └── requirements.txt
-│
-├── frontend/                 # Python Flask Web Portal & UI (Port 5000)
-│   ├── app.py                # Flask Router & Backend API Client
-│   ├── static/css/style.css  # Modern Glassmorphism & Dark Mode Styling
-│   ├── templates/            # HTML Views (Dashboard, Users, Products, Orders)
-│   ├── Dockerfile            # Standalone Frontend Dockerfile
-│   └── requirements.txt
-│
-├── db/                       # Database Initialization
-│   └── init.sql              # PostgreSQL Schema Creation & Seed Data
-│
-├── docker-compose.yml        # Local Multi-Container Orchestration
-└── .github/workflows/
-    └── deploy-app.yml        # CI/CD Pipeline (Build Docker -> Push ECR -> Deploy AWS)
+└── application/
+    ├── backend/                  # Python FastAPI REST API Microservice (Port 8000)
+    │   ├── app/
+    │   │   ├── database.py       # SQLAlchemy Database Engine (PostgreSQL / SQLite fallback)
+    │   │   ├── models.py         # DB Models (Users, Products, Orders)
+    │   │   ├── schemas.py        # Pydantic Schemas & Data Validation
+    │   │   └── main.py           # FastAPI Endpoints & Health Checks
+    │   ├── Dockerfile            # Standalone Backend Dockerfile
+    │   └── requirements.txt
+    │
+    ├── frontend/                 # Python Flask Web Portal & UI (Port 5000)
+    │   ├── app.py                # Flask Router & Backend API Client
+    │   ├── static/css/style.css  # Modern Glassmorphism & Dark Mode Styling
+    │   ├── templates/            # HTML Views (Dashboard, Users, Products, Orders)
+    │   ├── Dockerfile            # Standalone Frontend Dockerfile
+    │   └── requirements.txt
+    │
+    ├── db/                       # Database Initialization
+    │   └── init.sql              # PostgreSQL Schema Creation & Seed Data
+    │
+    ├── k8s/                      # Kubernetes manifests for EKS + Istio (see application/README.md)
+    └── docker-compose.yml        # Local Multi-Container Orchestration
+
+.github/workflows/
+└── deploy-app.yml        # CI/CD Pipeline (Build Docker -> Push ECR -> Deploy AWS)
 ```
 
 ---
@@ -66,10 +69,10 @@ You can build and run each service independently using standard Docker commands:
 
 ```bash
 # Build Backend Image
-docker build -t cloud-backend ./backend
+docker build -t cloud-backend ./application/backend
 
 # Build Frontend Image
-docker build -t cloud-frontend ./frontend
+docker build -t cloud-frontend ./application/frontend
 ```
 
 ### Step 2: Run Services on a Docker Bridge Network
@@ -106,6 +109,7 @@ docker run -d --name frontend \
 To launch all 3 services (PostgreSQL, Backend API, Frontend Web App) together with one command:
 
 ```bash
+cd application
 docker-compose up --build
 ```
 
@@ -120,7 +124,7 @@ The GitHub Actions workflow [`.github/workflows/deploy-app.yml`](.github/workflo
    - Push to `application` branch (when changes occur in `backend/` or `frontend/`).
    - Manual trigger (`workflow_dispatch`) with parameters for target `environment` (`dev`, `stage`, `prod`) and `service` (`all`, `frontend`, `backend`).
 2. **Build & Tag**:
-   - Builds Docker images for `frontend` and `backend` separately.
+   - Builds Docker images for `application/frontend` and `application/backend` separately.
    - Tags images with Git commit SHA (`${GITHUB_SHA::7}`) and `latest`.
 3. **Push to Amazon ECR**:
    - Authenticates to AWS ECR via `aws-actions/amazon-ecr-login`.

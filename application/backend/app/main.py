@@ -3,9 +3,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
 import os
+import httpx
 
 from .database import engine, get_db, Base
 from . import models, schemas
+
+# Internal-only dependency: never called directly by the frontend, only by
+# this backend service. Used to demonstrate Istio service-to-service
+# AuthorizationPolicy (allow backend->inventory, deny frontend->inventory).
+INVENTORY_URL = os.getenv("INVENTORY_URL", "http://inventory:8001")
+
+
+def check_inventory(sku: str) -> dict:
+    try:
+        resp = httpx.get(f"{INVENTORY_URL}/api/inventory/{sku}", timeout=3.0)
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        # Fail-open so the demo app stays usable if the inventory service or
+        # its mesh policy is mid-change; a stricter mode is a good exercise
+        # once you're practicing circuit breaking / retries.
+        print(f"Inventory check failed for {sku}: {e}")
+        return {"sku": sku, "available": True, "stock": None}
 
 # Initialize database tables
 try:
@@ -141,6 +160,14 @@ def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db)
     return db_product
 
 
+@app.get("/api/products/{product_id}/availability", tags=["Products"])
+def get_product_availability(product_id: int, db: Session = Depends(get_db)):
+    product = db.query(models.Product).filter(models.Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return check_inventory(product.sku)
+
+
 @app.delete("/api/products/{product_id}", tags=["Products"])
 def delete_product(product_id: int, db: Session = Depends(get_db)):
     prod = db.query(models.Product).filter(models.Product.id == product_id).first()
@@ -166,7 +193,11 @@ def create_order(order: schemas.OrderCreate, db: Session = Depends(get_db)):
     product = db.query(models.Product).filter(models.Product.id == order.product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
+
+    inventory = check_inventory(product.sku)
+    if not inventory.get("available", True):
+        raise HTTPException(status_code=409, detail="Product out of stock")
+
     total = product.price * order.quantity
     db_order = models.Order(
         user_id=order.user_id,

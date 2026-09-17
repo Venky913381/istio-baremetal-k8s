@@ -1,0 +1,97 @@
+# Service-to-service access control for the `app` mesh.
+#
+# Istio semantics: once ANY AuthorizationPolicy with action ALLOW selects a
+# workload, only traffic matching one of its ALLOW rules is permitted -
+# everything else to that workload is implicitly denied. So each ALLOW policy
+# below already acts as a deny-by-default for its workload. The explicit DENY
+# policy on `inventory` is added on top anyway, purely so you have a concrete
+# "action: DENY" example to practice with (it currently overlaps with the
+# implicit deny that `inventory-allow-backend` already produces).
+#
+# Expected mesh edges once these are applied:
+#   client -> frontend   (via Istio ingress gateway only)
+#   frontend -> backend  (allowed)
+#   backend -> inventory (allowed)
+#   frontend -> inventory (explicitly denied - frontend must go through backend)
+#   backend -> postgres  (allowed)
+#
+# Try it: `kubectl exec` into the frontend pod and `curl inventory:8001/api/health`
+# -> 403 RBAC: access denied. The same curl from a backend pod succeeds.
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: frontend-allow-ingress
+  namespace: app
+spec:
+  selector:
+    matchLabels:
+      app: frontend
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: backend-allow-frontend
+  namespace: app
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/app/sa/frontend"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: inventory-allow-backend
+  namespace: app
+spec:
+  selector:
+    matchLabels:
+      app: inventory
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/app/sa/backend"]
+---
+# Explicit deny example: frontend must never reach inventory directly, only
+# through backend. Kept alongside the ALLOW policy above for teaching
+# purposes even though the ALLOW policy alone already has this effect.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: inventory-deny-frontend
+  namespace: app
+spec:
+  selector:
+    matchLabels:
+      app: inventory
+  action: DENY
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/app/sa/frontend"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: postgres-allow-backend
+  namespace: app
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/app/sa/backend"]

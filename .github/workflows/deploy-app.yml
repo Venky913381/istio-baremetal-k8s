@@ -6,8 +6,9 @@ on:
       - infra
       - application
     paths:
-      - 'backend/**'
-      - 'frontend/**'
+      - 'application/backend/**'
+      - 'application/frontend/**'
+      - 'application/inventory/**'
       - '.github/workflows/deploy-app.yml'
   workflow_dispatch:
     inputs:
@@ -29,12 +30,14 @@ on:
           - all
           - frontend
           - backend
+          - inventory
         default: 'all'
 
 env:
   AWS_REGION: us-east-1
   FRONTEND_REPO: ${{ secrets.ECR_FRONTEND_REPO || 'istio-baremetal-k8s-dev-frontend' }}
   BACKEND_REPO: ${{ secrets.ECR_BACKEND_REPO || 'istio-baremetal-k8s-dev-backend' }}
+  INVENTORY_REPO: ${{ secrets.ECR_INVENTORY_REPO || 'istio-baremetal-k8s-dev-inventory' }}
 
 jobs:
   test-and-lint:
@@ -53,13 +56,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install flake8 pytest
-          if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
-          if [ -f frontend/requirements.txt ]; then pip install -r frontend/requirements.txt; fi
+          if [ -f application/backend/requirements.txt ]; then pip install -r application/backend/requirements.txt; fi
+          if [ -f application/frontend/requirements.txt ]; then pip install -r application/frontend/requirements.txt; fi
+          if [ -f application/inventory/requirements.txt ]; then pip install -r application/inventory/requirements.txt; fi
 
       - name: Lint with flake8
         run: |
           # stop the build if there are Python syntax errors or undefined names
-          flake8 backend frontend --count --select=E9,F63,F7,F82 --show-source --statistics || echo "Warnings found"
+          flake8 application/backend application/frontend application/inventory --count --select=E9,F63,F7,F82 --show-source --statistics || echo "Warnings found"
 
   build-and-push:
     name: Build & Push Docker Images to ECR
@@ -94,7 +98,7 @@ jobs:
           IMAGE_TAG: ${{ steps.prep.outputs.tag }}
         run: |
           echo "Building Backend Image..."
-          docker build -t $ECR_REGISTRY/$BACKEND_REPO:$IMAGE_TAG -t $ECR_REGISTRY/$BACKEND_REPO:latest ./backend
+          docker build -t $ECR_REGISTRY/$BACKEND_REPO:$IMAGE_TAG -t $ECR_REGISTRY/$BACKEND_REPO:latest ./application/backend
           
           echo "Pushing Backend Image to ECR..."
           docker push $ECR_REGISTRY/$BACKEND_REPO:$IMAGE_TAG
@@ -108,11 +112,25 @@ jobs:
           IMAGE_TAG: ${{ steps.prep.outputs.tag }}
         run: |
           echo "Building Frontend Image..."
-          docker build -t $ECR_REGISTRY/$FRONTEND_REPO:$IMAGE_TAG -t $ECR_REGISTRY/$FRONTEND_REPO:latest ./frontend
+          docker build -t $ECR_REGISTRY/$FRONTEND_REPO:$IMAGE_TAG -t $ECR_REGISTRY/$FRONTEND_REPO:latest ./application/frontend
           
           echo "Pushing Frontend Image to ECR..."
           docker push $ECR_REGISTRY/$FRONTEND_REPO:$IMAGE_TAG
           docker push $ECR_REGISTRY/$FRONTEND_REPO:latest
+
+      # ---------------- BUILD & PUSH INVENTORY ----------------
+      - name: Build & Push Inventory Docker Image
+        if: github.event.inputs.service == 'all' || github.event.inputs.service == 'inventory' || github.event_name == 'push'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.prep.outputs.tag }}
+        run: |
+          echo "Building Inventory Image..."
+          docker build -t $ECR_REGISTRY/$INVENTORY_REPO:$IMAGE_TAG -t $ECR_REGISTRY/$INVENTORY_REPO:latest ./application/inventory
+
+          echo "Pushing Inventory Image to ECR..."
+          docker push $ECR_REGISTRY/$INVENTORY_REPO:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$INVENTORY_REPO:latest
 
   deploy:
     name: Deploy to AWS Infrastructure
