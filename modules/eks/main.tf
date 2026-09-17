@@ -41,5 +41,5 @@ resource "aws_eks_node_group" "main" {
 
   depends_on = [
     aws_eks_cluster.main
-  }
+  ]
 }
