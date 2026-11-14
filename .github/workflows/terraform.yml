@@ -1,0 +1,91 @@
+name: Terraform - VPC & EKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+        default: plan
+      confirm_destroy:
+        description: 'Type "destroy" to confirm a destroy run'
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-eks # never run two Terraform jobs against the same state at once
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.12.2"
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'istio-baremetal-k8s-tfstate' }}
+  TF_IN_AUTOMATION: "true"
+
+defaults:
+  run:
+    working-directory: terraform
+
+jobs:
+  terraform:
+    name: terraform ${{ inputs.action }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard destroy
+        if: inputs.action == 'destroy' && inputs.confirm_destroy != 'destroy'
+        working-directory: .
+        run: |
+          echo "::error::Destroy not confirmed. Re-run with confirm_destroy = destroy."
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="region=${AWS_REGION}"
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        if: inputs.action != 'destroy'
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform plan (destroy)
+        if: inputs.action == 'destroy'
+        run: terraform plan -destroy -input=false -out=tfplan
+
+      - name: Terraform apply
+        if: inputs.action == 'apply' || inputs.action == 'destroy'
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Show outputs
+        if: inputs.action == 'apply'
+        run: terraform output
