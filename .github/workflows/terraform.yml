@@ -3,6 +3,15 @@ name: Terraform - VPC & EKS
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: "Target Environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+        default: dev
       action:
         description: "Terraform action"
         required: true
@@ -22,14 +31,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: terraform-eks # never run two Terraform jobs against the same state at once
+  group: terraform-eks-${{ inputs.environment }} # never run two Terraform jobs against the same state at once
   cancel-in-progress: false
-
-env:
-  TF_VERSION: "1.12.2"
-  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'istio-baremetal-k8s-tfstate' }}
-  TF_IN_AUTOMATION: "true"
 
 defaults:
   run:
@@ -37,8 +40,18 @@ defaults:
 
 jobs:
   terraform:
-    name: terraform ${{ inputs.action }}
+    name: terraform ${{ inputs.action }} (${{ inputs.environment }})
     runs-on: ubuntu-latest
+    # Same GitHub Environments (and their secrets/variables) as the infra branch pipeline
+    environment: ${{ inputs.environment }}
+    env:
+      TF_VERSION: "1.12.2"
+      ENV: ${{ inputs.environment }}
+      AWS_REGION: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET || vars.TF_STATE_BUCKET || 'istio-baremetal-k8s-tfstate' }}
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_environment: ${{ inputs.environment }}
+      TF_VAR_aws_region: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
     steps:
       - name: Guard destroy
         if: inputs.action == 'destroy' && inputs.confirm_destroy != 'destroy'
@@ -69,6 +82,7 @@ jobs:
         run: |
           terraform init -input=false \
             -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=fresh-start/${ENV}/eks/terraform.tfstate" \
             -backend-config="region=${AWS_REGION}"
 
       - name: Terraform validate
