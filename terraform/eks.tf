@@ -37,6 +37,11 @@ resource "aws_eks_cluster" "main" {
     bootstrap_cluster_creator_admin_permissions = true
   }
 
+  # Never drift into paid extended support ($0.60/h); auto-upgrade instead.
+  upgrade_policy {
+    support_type = "STANDARD"
+  }
+
   depends_on = [aws_iam_role_policy_attachment.cluster_policy]
 }
 
@@ -97,20 +102,17 @@ resource "aws_eks_node_group" "main" {
   subnet_ids      = aws_subnet.public[*].id
   instance_types  = var.node_instance_types
   ami_type        = "AL2023_x86_64_STANDARD"
-  capacity_type   = "ON_DEMAND"
+  capacity_type   = var.node_capacity_type
+  disk_size       = var.node_disk_size
 
   scaling_config {
-    desired_size = var.node_desired_size
-    min_size     = var.node_min_size
-    max_size     = var.node_max_size
+    desired_size = var.node_count
+    min_size     = var.node_count
+    max_size     = var.node_count
   }
 
   update_config {
     max_unavailable = 1
-  }
-
-  lifecycle {
-    ignore_changes = [scaling_config[0].desired_size] # allow autoscalers to change it
   }
 
   depends_on = [

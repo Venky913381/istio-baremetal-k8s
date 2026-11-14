@@ -40,7 +40,7 @@ variable "public_subnet_cidrs" {
 variable "kubernetes_version" {
   description = "EKS Kubernetes version"
   type        = string
-  default     = "1.33"
+  default     = "1.35" # standard support until 2027-03-27; older versions bill $0.60/h extended support
 }
 
 variable "cluster_public_access_cidrs" {
@@ -50,24 +50,27 @@ variable "cluster_public_access_cidrs" {
 }
 
 variable "node_instance_types" {
-  description = "EC2 instance types for the managed node group"
+  description = "EC2 instance types for the node group (several similar types improve Spot availability)"
   type        = list(string)
-  default     = ["t3.medium"]
+  default     = ["t3.small", "t3a.small"]
 }
 
-variable "node_desired_size" {
-  type    = number
-  default = 2
+variable "node_capacity_type" {
+  description = "SPOT (up to ~70% cheaper, can be interrupted and replaced) or ON_DEMAND"
+  type        = string
+  default     = "SPOT"
 }
 
-variable "node_min_size" {
-  type    = number
-  default = 1
+variable "node_count" {
+  description = "Fixed number of worker nodes"
+  type        = number
+  default     = 2
 }
 
-variable "node_max_size" {
-  type    = number
-  default = 3
+variable "node_disk_size" {
+  description = "Root EBS volume size (GiB) per node"
+  type        = number
+  default     = 20
 }
 
 variable "admin_principal_arns" {

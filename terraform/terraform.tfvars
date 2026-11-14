@@ -5,11 +5,12 @@ project_name = "istio-k8s"
 vpc_cidr            = "10.0.0.0/16"
 public_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
 
-kubernetes_version  = "1.33"
-node_instance_types = ["t3.medium"]
-node_desired_size   = 2
-node_min_size       = 1
-node_max_size       = 3
+# POC / low-cost settings
+kubernetes_version  = "1.35"
+node_instance_types = ["t3.small", "t3a.small"] # 2 vCPU, 2 GiB each
+node_capacity_type  = "SPOT"
+node_count          = 2
+node_disk_size      = 20
 
 # Add your own IAM user/role here if it is different from the one the pipeline uses,
 # so you can run kubectl locally:
