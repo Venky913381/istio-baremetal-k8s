@@ -1,0 +1,12 @@
+# Only mTLS traffic is accepted in istio-poc. Callers without a sidecar
+# (legacy namespace) are rejected; in-mesh callers keep working.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: istio-poc
+  labels:
+    poc-scenario: mtls-strict
+spec:
+  mtls:
+    mode: STRICT

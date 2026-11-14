@@ -1,0 +1,32 @@
+# Default ("base") routing: all traffic to backend v1, no retries, no faults.
+# Scenarios replace these objects (same names) and "base" restores them.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: backend
+  namespace: istio-poc
+spec:
+  hosts:
+    - backend
+  http:
+    - route:
+        - destination:
+            host: backend
+            subset: v1
+      retries:
+        attempts: 0 # disable Istio's default retries so failures are visible
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: inventory
+  namespace: istio-poc
+spec:
+  hosts:
+    - inventory
+  http:
+    - route:
+        - destination:
+            host: inventory
+      retries:
+        attempts: 0

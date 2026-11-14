@@ -1,0 +1,40 @@
+# inventory is delayed 5s, but frontend->backend has a 2s timeout,
+# so callers get "504 upstream request timeout" after ~2s instead of waiting.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: inventory
+  namespace: istio-poc
+  labels:
+    poc-scenario: timeout
+spec:
+  hosts:
+    - inventory
+  http:
+    - fault:
+        delay:
+          fixedDelay: 5s
+          percentage:
+            value: 100
+      route:
+        - destination:
+            host: inventory
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: backend
+  namespace: istio-poc
+  labels:
+    poc-scenario: timeout
+spec:
+  hosts:
+    - backend
+  http:
+    - route:
+        - destination:
+            host: backend
+            subset: v1
+      timeout: 2s
+      retries:
+        attempts: 0

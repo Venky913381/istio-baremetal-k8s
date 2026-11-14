@@ -1,0 +1,43 @@
+# Used by: istioctl install -y -f application/istio/install/istio-config.yaml
+# Sized for small POC nodes (2 x t3.small): single replicas, no autoscaling, small sidecars.
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  profile: default # istiod + istio-ingressgateway
+  meshConfig:
+    accessLogFile: /dev/stdout # Envoy access logs: kubectl logs <pod> -c istio-proxy
+    outboundTrafficPolicy:
+      mode: ALLOW_ANY # egress scenarios switch the app namespace to REGISTRY_ONLY
+  components:
+    pilot:
+      k8s:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 256Mi
+    ingressGateways:
+      - name: istio-ingressgateway
+        enabled: true
+        k8s:
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          service:
+            type: LoadBalancer # creates an AWS Classic LB (~$0.025/h) with a public DNS name
+  values:
+    pilot:
+      autoscaleEnabled: false
+    gateways:
+      istio-ingressgateway:
+        autoscaleEnabled: false
+    global:
+      proxy:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 48Mi
+          limits:
+            memory: 192Mi

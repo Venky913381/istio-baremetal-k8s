@@ -1,0 +1,26 @@
+# Requests with header "end-user: tester" go to v2; everyone else gets v1.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: backend
+  namespace: istio-poc
+  labels:
+    poc-scenario: header-routing
+spec:
+  hosts:
+    - backend
+  http:
+    - match:
+        - headers:
+            end-user:
+              exact: tester
+      route:
+        - destination:
+            host: backend
+            subset: v2
+    - route:
+        - destination:
+            host: backend
+            subset: v1
+      retries:
+        attempts: 0

@@ -1,0 +1,25 @@
+# Users are served by v1; a copy of every request is sent to v2 (responses discarded).
+# Check v2's logs to see the shadow traffic.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: backend
+  namespace: istio-poc
+  labels:
+    poc-scenario: mirroring
+spec:
+  hosts:
+    - backend
+  http:
+    - route:
+        - destination:
+            host: backend
+            subset: v1
+          weight: 100
+      mirror:
+        host: backend
+        subset: v2
+      mirrorPercentage:
+        value: 100
+      retries:
+        attempts: 0

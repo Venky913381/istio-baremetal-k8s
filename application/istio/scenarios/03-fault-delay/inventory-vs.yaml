@@ -1,0 +1,20 @@
+# Inject a 3s delay into every call to inventory. The page still works, just slowly.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: inventory
+  namespace: istio-poc
+  labels:
+    poc-scenario: fault-delay
+spec:
+  hosts:
+    - inventory
+  http:
+    - fault:
+        delay:
+          fixedDelay: 3s
+          percentage:
+            value: 100
+      route:
+        - destination:
+            host: inventory

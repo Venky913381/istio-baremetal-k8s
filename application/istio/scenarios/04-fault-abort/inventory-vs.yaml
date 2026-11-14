@@ -1,0 +1,22 @@
+# Half of the calls to inventory fail with HTTP 500 (injected by Envoy, the app is fine).
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: inventory
+  namespace: istio-poc
+  labels:
+    poc-scenario: fault-abort
+spec:
+  hosts:
+    - inventory
+  http:
+    - fault:
+        abort:
+          httpStatus: 500
+          percentage:
+            value: 50
+      route:
+        - destination:
+            host: inventory
+      retries:
+        attempts: 0

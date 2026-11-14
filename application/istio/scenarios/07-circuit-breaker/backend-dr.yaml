@@ -1,0 +1,31 @@
+# Circuit breaker: at most 1 connection and 1 pending request to backend.
+# Extra concurrent requests are rejected immediately with 503 (UO = upstream overflow).
+# Outlier detection ejects a pod that returns 3 consecutive 5xx for 30s.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: backend
+  namespace: istio-poc
+  labels:
+    poc-scenario: circuit-breaker
+spec:
+  host: backend
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 1
+      http:
+        http1MaxPendingRequests: 1
+        maxRequestsPerConnection: 1
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 100
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2

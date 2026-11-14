@@ -1,0 +1,23 @@
+# Canary: 80% of traffic to v1, 20% to v2.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: backend
+  namespace: istio-poc
+  labels:
+    poc-scenario: canary-traffic-split
+spec:
+  hosts:
+    - backend
+  http:
+    - route:
+        - destination:
+            host: backend
+            subset: v1
+          weight: 80
+        - destination:
+            host: backend
+            subset: v2
+          weight: 20
+      retries:
+        attempts: 0

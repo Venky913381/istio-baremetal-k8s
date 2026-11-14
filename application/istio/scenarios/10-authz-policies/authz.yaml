@@ -1,0 +1,73 @@
+# Zero trust: deny everything in istio-poc, then allow only the real call chain
+#   ingressgateway -> frontend -> backend (GET /api/*) -> inventory (GET /api/stock)
+# The curl and fortio test pods get "403 RBAC: access denied".
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-nothing
+  namespace: istio-poc
+  labels:
+    poc-scenario: authz-policies
+spec: {}
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: frontend-allow-ingress
+  namespace: istio-poc
+  labels:
+    poc-scenario: authz-policies
+spec:
+  selector:
+    matchLabels:
+      app: frontend
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: backend-allow-frontend
+  namespace: istio-poc
+  labels:
+    poc-scenario: authz-policies
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-poc/sa/frontend
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/api/*"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: inventory-allow-backend
+  namespace: istio-poc
+  labels:
+    poc-scenario: authz-policies
+spec:
+  selector:
+    matchLabels:
+      app: inventory
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-poc/sa/backend
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/api/stock"]

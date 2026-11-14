@@ -70,6 +70,26 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Load balancers created by Kubernetes (e.g. the Istio ingress gateway) are not in
+      # Terraform state and would block deleting the VPC, so remove them first.
+      - name: Delete Kubernetes load balancers before destroy
+        if: inputs.action == 'destroy'
+        continue-on-error: true
+        working-directory: .
+        run: |
+          CLUSTER="istio-k8s-${ENV}"
+          if aws eks describe-cluster --name "$CLUSTER" --region "$AWS_REGION" >/dev/null 2>&1; then
+            aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+            kubectl get svc -A -o json \
+              | jq -r '.items[] | select(.spec.type=="LoadBalancer") | "\(.metadata.namespace) \(.metadata.name)"' \
+              | while read -r ns name; do
+                  echo "Deleting LoadBalancer service $ns/$name"
+                  kubectl delete svc -n "$ns" "$name" --wait=true
+                done
+            echo "Waiting for AWS to release load balancer resources..."
+            sleep 90
+          fi
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:

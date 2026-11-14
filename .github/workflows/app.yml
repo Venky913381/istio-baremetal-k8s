@@ -1,0 +1,196 @@
+name: App - Build, Istio & Scenarios
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target Environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+        default: dev
+      action:
+        description: "What to do"
+        required: true
+        type: choice
+        options:
+          - deploy-all # build-push + install-istio + deploy-app
+          - build-push
+          - install-istio
+          - deploy-app
+          - apply-scenario
+          - uninstall
+        default: deploy-all
+      scenario:
+        description: "Istio scenario for apply-scenario ('base' = reset to default routing)"
+        required: false
+        type: choice
+        options:
+          - base
+          - 01-canary-traffic-split
+          - 02-header-routing
+          - 03-fault-delay
+          - 04-fault-abort
+          - 05-timeout
+          - 06-retries
+          - 07-circuit-breaker
+          - 08-mirroring
+          - 09-mtls-strict
+          - 10-authz-policies
+          - 11-jwt-auth
+          - 12-egress-block
+          - 13-egress-allow
+          - 14-rate-limit
+        default: base
+      image_tag:
+        description: "Image tag for deploy-app when not building in this run (default: latest)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: ${{ inputs.action }} (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      ENV: ${{ inputs.environment }}
+      ACTION: ${{ inputs.action }}
+      SCENARIO: ${{ inputs.scenario }}
+      IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
+      AWS_REGION: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
+      NAME_PREFIX: istio-k8s-${{ inputs.environment }} # = "<project_name>-<environment>" in Terraform
+      ISTIO_VERSION: "1.31.0"
+      SERVICES: "frontend backend inventory"
+      APP_NS: istio-poc
+      SCENARIO_KINDS: virtualservices.networking.istio.io,destinationrules.networking.istio.io,serviceentries.networking.istio.io,sidecars.networking.istio.io,envoyfilters.networking.istio.io,peerauthentications.security.istio.io,requestauthentications.security.istio.io,authorizationpolicies.security.istio.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve registry and image tag
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "REGISTRY=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_ENV"
+          if [[ "$ACTION" == "build-push" || "$ACTION" == "deploy-all" ]]; then
+            TAG="${GITHUB_SHA::7}"
+          else
+            TAG="${IMAGE_TAG_INPUT:-latest}"
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Image tag: $TAG"
+
+      # ---------------- Build & push ----------------
+      - name: Log in to Amazon ECR
+        if: env.ACTION == 'build-push' || env.ACTION == 'deploy-all'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push images
+        if: env.ACTION == 'build-push' || env.ACTION == 'deploy-all'
+        run: |
+          for svc in $SERVICES; do
+            image="$REGISTRY/$NAME_PREFIX/$svc"
+            echo "::group::$svc"
+            docker build -t "$image:$TAG" -t "$image:latest" "application/services/$svc"
+            docker push "$image:$TAG"
+            docker push "$image:latest"
+            echo "::endgroup::"
+          done
+
+      # ---------------- Cluster access ----------------
+      - name: Configure kubectl
+        if: env.ACTION != 'build-push'
+        run: |
+          aws eks update-kubeconfig --region "$AWS_REGION" --name "$NAME_PREFIX"
+          kubectl get nodes -o wide
+
+      - name: Install istioctl
+        if: env.ACTION == 'deploy-all' || env.ACTION == 'install-istio' || env.ACTION == 'uninstall'
+        run: |
+          curl -sSL https://istio.io/downloadIstio | ISTIO_VERSION="$ISTIO_VERSION" sh -
+          echo "$PWD/istio-$ISTIO_VERSION/bin" >> "$GITHUB_PATH"
+
+      # ---------------- Istio ----------------
+      - name: Install Istio
+        if: env.ACTION == 'deploy-all' || env.ACTION == 'install-istio'
+        run: |
+          istioctl version --remote=false
+          istioctl install -y -f application/istio/install/istio-config.yaml
+          kubectl -n istio-system rollout status deploy/istiod --timeout=300s
+          kubectl -n istio-system rollout status deploy/istio-ingressgateway --timeout=300s
+
+      # ---------------- Application ----------------
+      - name: Deploy application
+        if: env.ACTION == 'deploy-all' || env.ACTION == 'deploy-app'
+        run: |
+          cd application/k8s
+          for svc in $SERVICES; do
+            kustomize edit set image "$svc=$REGISTRY/$NAME_PREFIX/$svc:$TAG"
+          done
+          kubectl apply -k .
+          kubectl apply -f ../istio/base/
+          if [[ "$TAG" == "latest" ]]; then
+            kubectl -n "$APP_NS" rollout restart deploy # "latest" doesn't change the spec, so force a pull
+          fi
+          for d in $(kubectl -n "$APP_NS" get deploy -o name); do
+            kubectl -n "$APP_NS" rollout status "$d" --timeout=300s
+          done
+          kubectl -n legacy rollout status deploy/curl --timeout=120s
+          kubectl -n "$APP_NS" get pods -o wide
+
+      # ---------------- Scenarios ----------------
+      - name: Apply Istio scenario
+        if: env.ACTION == 'apply-scenario'
+        run: |
+          echo "Resetting: removing resources from any previous scenario"
+          kubectl -n "$APP_NS" delete "$SCENARIO_KINDS" -l poc-scenario --ignore-not-found
+          kubectl apply -f application/istio/base/
+          if [[ "$SCENARIO" != "base" ]]; then
+            echo "Applying scenario $SCENARIO"
+            kubectl apply -f "application/istio/scenarios/$SCENARIO/"
+          fi
+          kubectl -n "$APP_NS" get "$SCENARIO_KINDS" -L poc-scenario
+          echo "### Active Istio scenario: \`$SCENARIO\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "See application/README.md for how to test it." >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------- Uninstall ----------------
+      - name: Uninstall application and Istio
+        if: env.ACTION == 'uninstall'
+        run: |
+          kubectl delete -k application/k8s --ignore-not-found --wait=true
+          istioctl uninstall --purge -y
+          kubectl delete namespace istio-system --ignore-not-found
+
+      # ---------------- Access info ----------------
+      - name: Show application URL
+        if: env.ACTION != 'build-push' && env.ACTION != 'uninstall'
+        run: |
+          if ! kubectl -n istio-system get svc istio-ingressgateway >/dev/null 2>&1; then
+            echo "Istio ingress gateway not installed yet."
+            exit 0
+          fi
+          HOST=""
+          for i in $(seq 1 30); do
+            HOST=$(kubectl -n istio-system get svc istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            [[ -n "$HOST" ]] && break
+            sleep 10
+          done
+          echo "App URL: http://$HOST/  (a new load balancer's DNS can take 2-3 minutes)"
+          echo "### App URL: http://$HOST/" >> "$GITHUB_STEP_SUMMARY"

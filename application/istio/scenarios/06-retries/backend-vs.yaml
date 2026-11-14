@@ -1,0 +1,21 @@
+# backend /api/flaky fails 50% of the time. With 3 retries on 5xx,
+# callers see failures only when all 4 attempts fail (~6%).
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: backend
+  namespace: istio-poc
+  labels:
+    poc-scenario: retries
+spec:
+  hosts:
+    - backend
+  http:
+    - route:
+        - destination:
+            host: backend
+            subset: v1
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: 5xx,reset,connect-failure

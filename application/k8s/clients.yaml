@@ -1,0 +1,97 @@
+# Test clients used by the scenarios:
+#   istio-poc/curl   - in-mesh caller (has a sidecar)
+#   istio-poc/fortio - load generator for circuit-breaker / rate-limit tests
+#   legacy/curl      - out-of-mesh caller (no sidecar) for mTLS tests
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: curl
+  namespace: istio-poc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: curl
+  namespace: istio-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: curl
+  template:
+    metadata:
+      labels:
+        app: curl
+    spec:
+      serviceAccountName: curl
+      terminationGracePeriodSeconds: 0
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          command: ["/bin/sleep", "infinity"]
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fortio
+  namespace: istio-poc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fortio
+  namespace: istio-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fortio
+  template:
+    metadata:
+      labels:
+        app: fortio
+    spec:
+      serviceAccountName: fortio
+      containers:
+        - name: fortio
+          image: fortio/fortio:latest_release
+          args: ["server"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: curl
+  namespace: legacy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: curl
+  template:
+    metadata:
+      labels:
+        app: curl
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          command: ["/bin/sleep", "infinity"]
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi

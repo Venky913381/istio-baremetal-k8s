@@ -1,0 +1,12 @@
+# Workloads in istio-poc may only reach hosts known to the mesh registry.
+# frontend's call to https://httpbin.org now fails.
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+  name: default
+  namespace: istio-poc
+  labels:
+    poc-scenario: egress-block
+spec:
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
