@@ -42,7 +42,7 @@ spec:
       serviceAccountName: frontend
       containers:
         - name: frontend
-          image: frontend # replaced with the ECR image by kustomize in the pipeline
+          image: <ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/istio-k8s-<ENV>/frontend:v1 # fill in the <...> placeholders (README step 5)
           ports:
             - name: http
               containerPort: 8080

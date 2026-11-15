@@ -22,28 +22,114 @@ All services are Python/Flask on port 8080, with a Dockerfile each in `services/
 application/
 ├── services/{frontend,backend,inventory}/   app.py, requirements.txt, Dockerfile
 ├── docker-compose.yml                       run locally without Kubernetes
-├── k8s/                                     Namespaces, Deployments, Services, test clients (kustomize)
+├── k8s/                                     Namespaces, Deployments, Services, test clients (plain YAML, numbered)
 └── istio/
     ├── install/istio-config.yaml            istioctl install settings (small-node sizing)
     ├── base/                                Gateway, DestinationRules, default routing (all -> v1)
     └── scenarios/NN-name/                   one folder per scenario
 ```
 
-## Deploy (GitHub Actions)
+## Deploy
 
-1. **Terraform - VPC & EKS** → `apply`. This creates the VPC, the EKS cluster and the ECR repositories.
-2. **App - Build, Istio & Scenarios** → `deploy-all`. This builds and pushes the images, installs Istio 1.31, and deploys the app and base routing. The run summary prints the app URL.
-3. **App - Build, Istio & Scenarios** → `apply-scenario` with a scenario from the list below. Each run first removes the previous scenario, so scenarios never stack. Choose `base` to reset.
-4. When you're finished: run the app pipeline with `uninstall` (optional), then the Terraform pipeline with `destroy`. The destroy run deletes the Istio load balancer first.
+Only the infrastructure has a pipeline. Everything on the cluster is deployed by hand, step by step.
 
-Other actions: `build-push` (images only), `install-istio`, and `deploy-app` (uses `image_tag`, or `latest`).
+Tools you need locally: `aws` CLI, `docker`, `kubectl`, `istioctl` 1.31, `jq`. The commands are bash; on Windows run them in Git Bash.
+
+### 1. Create the infrastructure (GitHub Actions)
+
+Run **Terraform - VPC & EKS** with `apply`. This creates the VPC, the EKS cluster and the ECR repositories (`istio-k8s-<env>/frontend|backend|inventory`).
+
+Your IAM identity needs cluster access. It has access automatically if it's the same identity the pipeline uses; otherwise add it to `admin_principal_arns` in `terraform/terraform.tfvars` and re-run `apply`.
+
+### 2. Point kubectl at the cluster
+
+```bash
+cd application
+export AWS_REGION=us-east-1 ENV=dev     # use the region/env your Terraform pipeline deployed to
+export NAME_PREFIX=istio-k8s-$ENV
+aws eks update-kubeconfig --region $AWS_REGION --name $NAME_PREFIX
+kubectl get nodes                      # 2 nodes, Ready
+```
+
+### 3. Build and push the images to ECR
+
+```bash
+export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export REGISTRY=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+export TAG=v1   # the k8s manifests use v1; if you change it, change the image tags in k8s/ too
+
+aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REGISTRY
+for svc in frontend backend inventory; do
+  docker build -t $REGISTRY/$NAME_PREFIX/$svc:$TAG services/$svc
+  docker push $REGISTRY/$NAME_PREFIX/$svc:$TAG
+done
+```
+
+### 4. Install Istio
+
+Download `istioctl` 1.31.0 from https://github.com/istio/istio/releases/tag/1.31.0 (on Windows: `istio-1.31.0-win.zip`, then put `bin/` on your `PATH`).
+
+```bash
+istioctl version --remote=false
+istioctl install -y -f istio/install/istio-config.yaml    # istiod + ingress gateway (creates an AWS LB)
+kubectl -n istio-system get pods
+```
+
+### 5. Deploy the application
+
+The manifests in `k8s/` are plain YAML, numbered in the order they must be applied (namespaces first). The image lines in `01-inventory.yaml`, `02-backend.yaml` and `03-frontend.yaml` contain placeholders:
+
+```
+image: <ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/istio-k8s-<ENV>/backend:v1
+```
+
+Replace them by hand, or with the variables from steps 2 and 3:
+
+```bash
+sed -i "s/<ACCOUNT_ID>/$ACCOUNT_ID/; s/<AWS_REGION>/$AWS_REGION/; s/<ENV>/$ENV/" k8s/*.yaml   # don't commit the result
+grep -n "image:" k8s/*.yaml                                                                 # check
+```
+
+```bash
+kubectl apply -f k8s/00-namespaces.yaml    # istio-poc (sidecar injection on) and legacy
+kubectl apply -f k8s/01-inventory.yaml
+kubectl apply -f k8s/02-backend.yaml       # backend-v1 and backend-v2 behind one Service
+kubectl apply -f k8s/03-frontend.yaml
+kubectl apply -f k8s/04-clients.yaml       # curl, fortio, legacy/curl test clients
+# (or all at once: kubectl apply -f k8s/)
+
+kubectl apply -f istio/base/                    # Gateway, DestinationRules, default routing (all -> v1)
+kubectl -n istio-poc get pods                   # app pods show 2/2 (app + istio-proxy)
+```
+
+### 6. Apply a scenario
+
+Every scenario resource carries the label `poc-scenario`. Remove the previous scenario first so scenarios never stack, re-apply base, then apply the new one:
+
+```bash
+KINDS=virtualservices,destinationrules,serviceentries,sidecars,envoyfilters,peerauthentications,requestauthentications,authorizationpolicies
+
+kubectl -n istio-poc delete $KINDS -l poc-scenario --ignore-not-found   # reset
+kubectl apply -f istio/base/
+kubectl apply -f istio/scenarios/01-canary-traffic-split/                 # pick one from the table below
+kubectl -n istio-poc get $KINDS -L poc-scenario                           # what is active now
+```
+
+Run only the first two commands to go back to `base`.
+
+### 7. Clean up
+
+```bash
+kubectl delete -f k8s/ --ignore-not-found
+istioctl uninstall --purge -y
+kubectl delete namespace istio-system --ignore-not-found
+```
+
+Then run **Terraform - VPC & EKS** with `destroy` (type `destroy` in `confirm_destroy`). It also deletes any leftover Kubernetes load balancer before removing the VPC.
 
 ## Test from your machine
 
-Your IAM identity needs cluster access. It has access automatically if it's the same identity the pipeline uses; otherwise add it to `admin_principal_arns` in `terraform/terraform.tfvars`.
-
 ```bash
-aws eks update-kubeconfig --region us-east-1 --name istio-k8s-dev
 export GW=http://$(kubectl -n istio-system get svc istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 curl -s $GW/api/products | jq
 

@@ -7,7 +7,7 @@ resource "aws_ecr_repository" "app" {
   for_each = toset(local.app_services)
 
   name                 = "${local.name}/${each.key}"
-  image_tag_mutability = "MUTABLE" # the pipeline moves the "latest" tag
+  image_tag_mutability = "MUTABLE" # allows re-pushing an existing tag
   force_delete         = true      # let terraform destroy remove repos that still hold images
 }
 
